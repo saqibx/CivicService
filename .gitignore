@@ -1,0 +1,29 @@
+# Build outputs
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# IDE
+.idea/
+.vs/
+*.swp
+
+# SQLite database
+*.db
+*.db-shm
+*.db-wal
+
+# Environment/secrets
+appsettings.*.local.json
+.env
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db

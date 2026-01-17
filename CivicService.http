@@ -1,0 +1,6 @@
+@CivicService_HostAddress = http://localhost:5083
+
+GET {{CivicService_HostAddress}}/api/servicerequests
+Accept: application/json
+
+###

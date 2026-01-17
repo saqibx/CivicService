@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(dotnet add package:*)",
+      "Bash(dotnet add:*)",
+      "Bash(dotnet ef migrations:*)",
+      "Bash(dotnet tool install:*)",
+      "Bash(export PATH=\"$PATH:/Users/saqib/.dotnet/tools\")",
+      "Bash(dotnet ef database:*)"
+    ]
+  }
+}
