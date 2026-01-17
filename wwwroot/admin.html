@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Civic Service Portal</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .dashboard {
+            padding: 2rem 0;
+        }
+
+        .dashboard-header {
+            margin-bottom: 2rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            border-top: 4px solid var(--copper);
+        }
+
+        .stat-card.primary {
+            border-top-color: var(--punch-red);
+        }
+
+        .stat-card.secondary {
+            border-top-color: var(--night-bordeaux);
+        }
+
+        .stat-card .value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: var(--night-bordeaux);
+        }
+
+        .stat-card .label {
+            color: #666;
+            font-size: 0.95rem;
+            margin-top: 0.5rem;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .chart-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .chart-card h3 {
+            color: var(--night-bordeaux);
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        .top-addresses {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .top-addresses h3 {
+            color: var(--night-bordeaux);
+            margin-bottom: 1rem;
+        }
+
+        .address-list {
+            list-style: none;
+        }
+
+        .address-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .address-item:last-child {
+            border-bottom: none;
+        }
+
+        .address-name {
+            flex: 1;
+            color: var(--dark-gray);
+        }
+
+        .address-count {
+            background: var(--beige);
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-weight: 600;
+            color: var(--night-bordeaux);
+        }
+
+        .loading-overlay {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 200px;
+            color: var(--copper);
+        }
+
+        .refresh-btn {
+            margin-left: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .chart-container {
+                height: 250px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1 class="logo">Civic Service Portal</h1>
+            <nav class="nav">
+                <a href="/" class="nav-link">Home</a>
+                <a href="/map.html" class="nav-link">Map View</a>
+                <a href="/admin.html" class="nav-link">Dashboard</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="container dashboard">
+            <div class="dashboard-header">
+                <h2 class="section-title">
+                    Admin Dashboard
+                    <button id="refreshBtn" class="btn btn-secondary refresh-btn">Refresh Data</button>
+                </h2>
+            </div>
+
+            <div id="statsGrid" class="stats-grid">
+                <div class="loading-overlay">Loading statistics...</div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <h3>Requests by Status</h3>
+                    <div class="chart-container">
+                        <canvas id="statusChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <h3>Requests by Category</h3>
+                    <div class="chart-container">
+                        <canvas id="categoryChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card" style="grid-column: 1 / -1;">
+                    <h3>Requests Over Time (Last 30 Days)</h3>
+                    <div class="chart-container">
+                        <canvas id="timelineChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="top-addresses">
+                <h3>Top Problem Areas</h3>
+                <ul id="addressList" class="address-list">
+                    <li class="loading-overlay">Loading...</li>
+                </ul>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2025 Civic Service Portal. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        const API_BASE = '/api/requests';
+        let statusChart, categoryChart, timelineChart;
+
+        // Color palette matching the theme
+        const colors = {
+            punchRed: '#E63946',
+            beige: '#EDF0DA',
+            copper: '#A37C40',
+            nightBordeaux: '#550C18',
+            statusColors: {
+                'Open': '#E63946',
+                'InProgress': '#A37C40',
+                'Closed': '#155724'
+            },
+            categoryColors: [
+                '#E63946', '#550C18', '#A37C40', '#2E5A88',
+                '#6B4C3F', '#8B4513', '#4A7C59', '#666666'
+            ]
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadDashboard();
+            document.getElementById('refreshBtn').addEventListener('click', loadDashboard);
+        });
+
+        async function loadDashboard() {
+            try {
+                const response = await fetch(`${API_BASE}/stats`);
+                const stats = await response.json();
+                renderDashboard(stats);
+            } catch (err) {
+                console.error('Failed to load dashboard:', err);
+            }
+        }
+
+        function renderDashboard(stats) {
+            renderStatCards(stats);
+            renderStatusChart(stats.byStatus);
+            renderCategoryChart(stats.byCategory);
+            renderTimelineChart(stats.requestsOverTime);
+            renderTopAddresses(stats.topAddresses);
+        }
+
+        function renderStatCards(stats) {
+            const openCount = stats.byStatus['Open'] || 0;
+            const inProgressCount = stats.byStatus['InProgress'] || 0;
+            const closedCount = stats.byStatus['Closed'] || 0;
+
+            document.getElementById('statsGrid').innerHTML = `
+                <div class="stat-card primary">
+                    <div class="value">${stats.totalRequests}</div>
+                    <div class="label">Total Requests</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">${openCount}</div>
+                    <div class="label">Open Requests</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">${inProgressCount}</div>
+                    <div class="label">In Progress</div>
+                </div>
+                <div class="stat-card secondary">
+                    <div class="value">${closedCount}</div>
+                    <div class="label">Closed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">${stats.averageResolutionHours}h</div>
+                    <div class="label">Avg. Resolution Time</div>
+                </div>
+            `;
+        }
+
+        function renderStatusChart(byStatus) {
+            const ctx = document.getElementById('statusChart').getContext('2d');
+
+            if (statusChart) statusChart.destroy();
+
+            const labels = Object.keys(byStatus).map(formatStatus);
+            const data = Object.values(byStatus);
+            const backgroundColors = Object.keys(byStatus).map(s => colors.statusColors[s] || '#666');
+
+            statusChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: backgroundColors,
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderCategoryChart(byCategory) {
+            const ctx = document.getElementById('categoryChart').getContext('2d');
+
+            if (categoryChart) categoryChart.destroy();
+
+            const labels = Object.keys(byCategory).map(formatCategory);
+            const data = Object.values(byCategory);
+
+            categoryChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Requests',
+                        data: data,
+                        backgroundColor: colors.categoryColors,
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderTimelineChart(requestsOverTime) {
+            const ctx = document.getElementById('timelineChart').getContext('2d');
+
+            if (timelineChart) timelineChart.destroy();
+
+            const labels = requestsOverTime.map(d => {
+                const date = new Date(d.date);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            });
+            const data = requestsOverTime.map(d => d.count);
+
+            timelineChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Requests',
+                        data: data,
+                        borderColor: colors.punchRed,
+                        backgroundColor: 'rgba(230, 57, 70, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointBackgroundColor: colors.nightBordeaux,
+                        pointRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderTopAddresses(topAddresses) {
+            const list = document.getElementById('addressList');
+
+            if (!topAddresses || topAddresses.length === 0) {
+                list.innerHTML = '<li class="address-item"><span class="address-name">No data available</span></li>';
+                return;
+            }
+
+            list.innerHTML = topAddresses.map((item, index) => `
+                <li class="address-item">
+                    <span class="address-name">${index + 1}. ${escapeHtml(item.address)}</span>
+                    <span class="address-count">${item.count} request${item.count !== 1 ? 's' : ''}</span>
+                </li>
+            `).join('');
+        }
+
+        function formatStatus(status) {
+            const map = {
+                'Open': 'Open',
+                'InProgress': 'In Progress',
+                'Closed': 'Closed'
+            };
+            return map[status] || status;
+        }
+
+        function formatCategory(category) {
+            const map = {
+                'Pothole': 'Pothole',
+                'StreetLight': 'Street Light',
+                'Graffiti': 'Graffiti',
+                'IllegalDumping': 'Illegal Dumping',
+                'SidewalkRepair': 'Sidewalk Repair',
+                'TreeMaintenance': 'Tree Maintenance',
+                'WaterLeak': 'Water Leak',
+                'Other': 'Other'
+            };
+            return map[category] || category;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

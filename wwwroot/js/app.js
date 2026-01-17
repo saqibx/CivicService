@@ -44,16 +44,22 @@ function setupEventListeners() {
     statusModal.addEventListener('click', (e) => {
         if (e.target === statusModal) closeModal();
     });
+    // Note: Geolocation is handled by places.js
 }
 
 // Form Submission
 async function handleFormSubmit(e) {
     e.preventDefault();
 
+    const lat = document.getElementById('latitude').value;
+    const lng = document.getElementById('longitude').value;
+
     const formData = {
         category: document.getElementById('category').value,
         address: document.getElementById('address').value,
-        description: document.getElementById('description').value
+        description: document.getElementById('description').value,
+        latitude: lat ? parseFloat(lat) : null,
+        longitude: lng ? parseFloat(lng) : null
     };
 
     try {

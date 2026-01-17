@@ -52,4 +52,11 @@ public class ServiceRequestsController : ControllerBase
         }
         return Ok(result);
     }
+
+    [HttpGet("stats")]
+    public async Task<IActionResult> GetStatistics()
+    {
+        var stats = await _service.GetStatisticsAsync();
+        return Ok(stats);
+    }
 }

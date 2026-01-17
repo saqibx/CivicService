@@ -1,0 +1,9 @@
+
+
+const CONFIG = {
+  
+    GOOGLE_MAPS_API_KEY: 'YOUR_GOOGLE_API_KEY'
+};
+
+
+window.APP_CONFIG = CONFIG;

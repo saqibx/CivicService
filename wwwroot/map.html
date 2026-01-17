@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map View - Civic Service Portal</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        #map {
+            height: calc(100vh - 200px);
+            min-height: 500px;
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .map-container {
+            padding: 2rem 0;
+        }
+
+        .map-filters {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .map-filters select {
+            padding: 0.5rem 1rem;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+
+        .map-legend {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .legend-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+        }
+
+        .legend-dot.open { background-color: #E63946; }
+        .legend-dot.inprogress { background-color: #A37C40; }
+        .legend-dot.closed { background-color: #155724; }
+
+        .leaflet-popup-content {
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        .popup-category {
+            font-weight: bold;
+            color: #550C18;
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .popup-status {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .popup-status.open { background: #FFF3CD; color: #856404; }
+        .popup-status.inprogress { background: #CCE5FF; color: #004085; }
+        .popup-status.closed { background: #D4EDDA; color: #155724; }
+
+        .popup-address {
+            color: #A37C40;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .popup-description {
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+
+        .popup-date {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .stats-bar {
+            display: flex;
+            gap: 2rem;
+            background: white;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #550C18;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1 class="logo">Civic Service Portal</h1>
+            <nav class="nav">
+                <a href="/" class="nav-link">Home</a>
+                <a href="/map.html" class="nav-link">Map View</a>
+                <a href="/admin.html" class="nav-link">Dashboard</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="container map-container">
+            <h2 class="section-title">Service Requests Map</h2>
+
+            <div class="stats-bar">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalOnMap">0</div>
+                    <div class="stat-label">Shown on Map</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="openCount">0</div>
+                    <div class="stat-label">Open</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="inProgressCount">0</div>
+                    <div class="stat-label">In Progress</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="closedCount">0</div>
+                    <div class="stat-label">Closed</div>
+                </div>
+            </div>
+
+            <div class="map-filters">
+                <label>
+                    <strong>Filter by Status:</strong>
+                    <select id="mapFilterStatus">
+                        <option value="">All Statuses</option>
+                        <option value="Open">Open</option>
+                        <option value="InProgress">In Progress</option>
+                        <option value="Closed">Closed</option>
+                    </select>
+                </label>
+                <label>
+                    <strong>Filter by Category:</strong>
+                    <select id="mapFilterCategory">
+                        <option value="">All Categories</option>
+                        <option value="Pothole">Pothole</option>
+                        <option value="StreetLight">Street Light</option>
+                        <option value="Graffiti">Graffiti</option>
+                        <option value="IllegalDumping">Illegal Dumping</option>
+                        <option value="SidewalkRepair">Sidewalk Repair</option>
+                        <option value="TreeMaintenance">Tree Maintenance</option>
+                        <option value="WaterLeak">Water Leak</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </label>
+                <button id="applyMapFilters" class="btn btn-secondary">Apply Filters</button>
+            </div>
+
+            <div id="map"></div>
+
+            <div class="map-legend">
+                <div class="legend-item">
+                    <div class="legend-dot open"></div>
+                    <span>Open</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot inprogress"></div>
+                    <span>In Progress</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot closed"></div>
+                    <span>Closed</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2025 Civic Service Portal. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const API_BASE = '/api/requests';
+        let map;
+        let markersLayer;
+
+        // Initialize map
+        document.addEventListener('DOMContentLoaded', () => {
+            // Default center (NYC) - will adjust to data bounds
+            map = L.map('map').setView([40.7128, -74.0060], 12);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+
+            markersLayer = L.layerGroup().addTo(map);
+
+            loadMapData();
+
+            document.getElementById('applyMapFilters').addEventListener('click', loadMapData);
+        });
+
+        async function loadMapData() {
+            const status = document.getElementById('mapFilterStatus').value;
+            const category = document.getElementById('mapFilterCategory').value;
+
+            const params = new URLSearchParams({ pageSize: 1000 });
+            if (status) params.append('status', status);
+            if (category) params.append('category', category);
+
+            try {
+                const response = await fetch(`${API_BASE}?${params}`);
+                const data = await response.json();
+
+                displayMarkers(data.items);
+            } catch (err) {
+                console.error('Failed to load map data:', err);
+            }
+        }
+
+        function displayMarkers(requests) {
+            markersLayer.clearLayers();
+
+            const bounds = [];
+            let openCount = 0, inProgressCount = 0, closedCount = 0;
+
+            const requestsWithCoords = requests.filter(r => r.latitude && r.longitude);
+
+            requestsWithCoords.forEach(request => {
+                const color = getStatusColor(request.status);
+                const marker = L.circleMarker([request.latitude, request.longitude], {
+                    radius: 10,
+                    fillColor: color,
+                    color: '#fff',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                });
+
+                marker.bindPopup(`
+                    <div class="popup-category">${formatCategory(request.category)}</div>
+                    <div class="popup-status ${request.status.toLowerCase()}">${formatStatus(request.status)}</div>
+                    <div class="popup-address">${escapeHtml(request.address)}</div>
+                    <div class="popup-description">${escapeHtml(request.description)}</div>
+                    <div class="popup-date">Reported: ${formatDate(request.createdAt)}</div>
+                `);
+
+                markersLayer.addLayer(marker);
+                bounds.push([request.latitude, request.longitude]);
+
+                if (request.status === 'Open') openCount++;
+                else if (request.status === 'InProgress') inProgressCount++;
+                else if (request.status === 'Closed') closedCount++;
+            });
+
+            // Update stats
+            document.getElementById('totalOnMap').textContent = requestsWithCoords.length;
+            document.getElementById('openCount').textContent = openCount;
+            document.getElementById('inProgressCount').textContent = inProgressCount;
+            document.getElementById('closedCount').textContent = closedCount;
+
+            // Fit map to markers
+            if (bounds.length > 0) {
+                map.fitBounds(bounds, { padding: [50, 50] });
+            }
+        }
+
+        function getStatusColor(status) {
+            const colors = {
+                'Open': '#E63946',
+                'InProgress': '#A37C40',
+                'Closed': '#155724'
+            };
+            return colors[status] || '#666';
+        }
+
+        function formatCategory(category) {
+            const map = {
+                'Pothole': 'Pothole',
+                'StreetLight': 'Street Light',
+                'Graffiti': 'Graffiti',
+                'IllegalDumping': 'Illegal Dumping',
+                'SidewalkRepair': 'Sidewalk Repair',
+                'TreeMaintenance': 'Tree Maintenance',
+                'WaterLeak': 'Water Leak',
+                'Other': 'Other'
+            };
+            return map[category] || category;
+        }
+
+        function formatStatus(status) {
+            const map = {
+                'Open': 'Open',
+                'InProgress': 'In Progress',
+                'Closed': 'Closed'
+            };
+            return map[status] || status;
+        }
+
+        function formatDate(dateString) {
+            return new Date(dateString).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

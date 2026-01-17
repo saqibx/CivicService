@@ -8,4 +8,5 @@ public interface IServiceRequestService
     Task<PagedResultDto<ServiceRequestDto>> GetAllAsync(ServiceRequestQueryDto query);
     Task<ServiceRequestDto?> GetByIdAsync(Guid id);
     Task<ServiceRequestDto?> UpdateStatusAsync(Guid id, UpdateStatusDto dto);
+    Task<DashboardStatsDto> GetStatisticsAsync();
 }

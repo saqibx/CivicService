@@ -24,6 +24,8 @@ public class ServiceRequestService : IServiceRequestService
             Category = dto.Category,
             Description = dto.Description,
             Address = dto.Address,
+            Latitude = dto.Latitude,
+            Longitude = dto.Longitude,
             Status = ServiceRequestStatus.Open,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -110,6 +112,57 @@ public class ServiceRequestService : IServiceRequestService
         return MapToDto(serviceRequest);
     }
 
+    public async Task<DashboardStatsDto> GetStatisticsAsync()
+    {
+        var requests = await _context.ServiceRequests.ToListAsync();
+
+        // counts by status
+        var byStatus = requests
+            .GroupBy(r => r.Status)
+            .ToDictionary(g => g.Key.ToString(), g => g.Count());
+
+        // counts by category
+        var byCategory = requests
+            .GroupBy(r => r.Category)
+            .ToDictionary(g => g.Key.ToString(), g => g.Count());
+
+        // requests over time (last 30 days)
+        var thirtyDaysAgo = DateTime.UtcNow.AddDays(-30);
+        var overTime = requests
+            .Where(r => r.CreatedAt >= thirtyDaysAgo)
+            .GroupBy(r => r.CreatedAt.Date)
+            .OrderBy(g => g.Key)
+            .Select(g => new DailyCountDto { Date = g.Key.ToString("yyyy-MM-dd"), Count = g.Count() })
+            .ToList();
+
+        // average resolution time (for closed requests)
+        var closedRequests = requests.Where(r => r.Status == ServiceRequestStatus.Closed).ToList();
+        double avgResolutionHours = 0;
+        if (closedRequests.Count > 0)
+        {
+            avgResolutionHours = closedRequests
+                .Average(r => (r.UpdatedAt - r.CreatedAt).TotalHours);
+        }
+
+        // top addresses
+        var topAddresses = requests
+            .GroupBy(r => r.Address)
+            .OrderByDescending(g => g.Count())
+            .Take(5)
+            .Select(g => new AddressCountDto { Address = g.Key, Count = g.Count() })
+            .ToList();
+
+        return new DashboardStatsDto
+        {
+            TotalRequests = requests.Count,
+            ByStatus = byStatus,
+            ByCategory = byCategory,
+            RequestsOverTime = overTime,
+            AverageResolutionHours = Math.Round(avgResolutionHours, 1),
+            TopAddresses = topAddresses
+        };
+    }
+
     private static ServiceRequestDto MapToDto(ServiceRequest request)
     {
         return new ServiceRequestDto
@@ -118,6 +171,8 @@ public class ServiceRequestService : IServiceRequestService
             Category = request.Category,
             Description = request.Description,
             Address = request.Address,
+            Latitude = request.Latitude,
+            Longitude = request.Longitude,
             Status = request.Status,
             CreatedAt = request.CreatedAt,
             UpdatedAt = request.UpdatedAt

@@ -10,7 +10,11 @@ public class ServiceRequest
 
     public string Description { get; set; } = string.Empty;
 
-    public string Address { get; set; } = string.Empty; // using address instead of lat/long for now
+    public string Address { get; set; } = string.Empty;
+
+    // geographic coordinates for map display
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
 
     public ServiceRequestStatus Status { get; set; }
 
