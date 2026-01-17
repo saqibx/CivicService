@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Civic Service Portal</title>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1 class="logo">Civic Service Portal</h1>
+            <nav class="nav">
+                <a href="#submit" class="nav-link">Submit Request</a>
+                <a href="#requests" class="nav-link">View Requests</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="main">
+        <section class="hero">
+            <div class="container">
+                <h2>Report Issues. Improve Your Community.</h2>
+                <p>Submit service requests for potholes, streetlights, graffiti, and more. Track the status of your reports in real-time.</p>
+            </div>
+        </section>
+
+        <section id="submit" class="section">
+            <div class="container">
+                <h2 class="section-title">Submit a Service Request</h2>
+                <form id="requestForm" class="form">
+                    <div class="form-group">
+                        <label for="category">Category *</label>
+                        <select id="category" name="category" required>
+                            <option value="">Select a category</option>
+                            <option value="Pothole">Pothole</option>
+                            <option value="StreetLight">Street Light</option>
+                            <option value="Graffiti">Graffiti</option>
+                            <option value="IllegalDumping">Illegal Dumping</option>
+                            <option value="SidewalkRepair">Sidewalk Repair</option>
+                            <option value="TreeMaintenance">Tree Maintenance</option>
+                            <option value="WaterLeak">Water Leak</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="address">Address *</label>
+                        <input type="text" id="address" name="address" placeholder="Enter the location address" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="description">Description * <span class="hint">(minimum 10 characters)</span></label>
+                        <textarea id="description" name="description" rows="4" placeholder="Please describe the issue in detail..." required minlength="10"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Submit Request</button>
+                </form>
+                <div id="formMessage" class="message hidden"></div>
+            </div>
+        </section>
+
+        <section id="requests" class="section section-alt">
+            <div class="container">
+                <h2 class="section-title">Service Requests</h2>
+
+                <div class="filters">
+                    <div class="filter-group">
+                        <label for="filterStatus">Status</label>
+                        <select id="filterStatus">
+                            <option value="">All Statuses</option>
+                            <option value="Open">Open</option>
+                            <option value="InProgress">In Progress</option>
+                            <option value="Closed">Closed</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterCategory">Category</label>
+                        <select id="filterCategory">
+                            <option value="">All Categories</option>
+                            <option value="Pothole">Pothole</option>
+                            <option value="StreetLight">Street Light</option>
+                            <option value="Graffiti">Graffiti</option>
+                            <option value="IllegalDumping">Illegal Dumping</option>
+                            <option value="SidewalkRepair">Sidewalk Repair</option>
+                            <option value="TreeMaintenance">Tree Maintenance</option>
+                            <option value="WaterLeak">Water Leak</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterSort">Sort By</label>
+                        <select id="filterSort">
+                            <option value="createdAt_desc">Newest First</option>
+                            <option value="createdAt_asc">Oldest First</option>
+                            <option value="updatedAt_desc">Recently Updated</option>
+                        </select>
+                    </div>
+                    <button id="applyFilters" class="btn btn-secondary">Apply Filters</button>
+                </div>
+
+                <div id="requestsList" class="requests-list">
+                    <p class="loading">Loading requests...</p>
+                </div>
+
+                <div id="pagination" class="pagination hidden">
+                    <button id="prevPage" class="btn btn-small">&larr; Previous</button>
+                    <span id="pageInfo" class="page-info"></span>
+                    <button id="nextPage" class="btn btn-small">Next &rarr;</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2025 Civic Service Portal. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- Status Update Modal -->
+    <div id="statusModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Update Request Status</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Request ID: <strong id="modalRequestId"></strong></p>
+                <div class="form-group">
+                    <label for="newStatus">New Status</label>
+                    <select id="newStatus">
+                        <option value="Open">Open</option>
+                        <option value="InProgress">In Progress</option>
+                        <option value="Closed">Closed</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="cancelStatus" class="btn btn-secondary">Cancel</button>
+                <button id="saveStatus" class="btn btn-primary">Update Status</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

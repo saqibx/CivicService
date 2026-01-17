@@ -1,11 +1,23 @@
+using System.Text.Json.Serialization;
 using CivicService.Data;
+using CivicService.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 builder.Services.AddOpenApi();
+
+// register services
+builder.Services.AddScoped<IServiceRequestService, ServiceRequestService>();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
 
 // get the database provider from config
 var dbProvider = builder.Configuration.GetValue<string>("DatabaseProvider") ?? "Sqlite";
@@ -27,14 +39,15 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 
 var app = builder.Build();
-
-// only show openapi in dev mode
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 app.MapControllers();
+app.MapFallbackToFile("index.html");
 
 app.Run();
