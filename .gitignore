@@ -1,6 +1,8 @@
 # Build outputs
 bin/
 obj/
+.claude/
+.vscode/
 
 # User-specific files
 *.user
@@ -27,3 +29,4 @@ appsettings.*.local.json
 
 # Windows
 Thumbs.db
+
