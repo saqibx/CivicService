@@ -7,7 +7,7 @@ public class DashboardStatsDto
     public Dictionary<string, int> ByCategory { get; set; } = [];
     public List<DailyCountDto> RequestsOverTime { get; set; } = [];
     public double AverageResolutionHours { get; set; }
-    public List<AddressCountDto> TopAddresses { get; set; } = [];
+    public List<NeighborhoodCountDto> TopNeighborhoods { get; set; } = [];
 }
 
 public class DailyCountDto
@@ -19,5 +19,11 @@ public class DailyCountDto
 public class AddressCountDto
 {
     public string Address { get; set; } = string.Empty;
+    public int Count { get; set; }
+}
+
+public class NeighborhoodCountDto
+{
+    public string Neighborhood { get; set; } = string.Empty;
     public int Count { get; set; }
 }

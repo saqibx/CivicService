@@ -4,8 +4,9 @@ namespace CivicService.Services;
 
 public interface IServiceRequestService
 {
-    Task<ServiceRequestDto> CreateAsync(CreateServiceRequestDto dto);
+    Task<ServiceRequestDto> CreateAsync(CreateServiceRequestDto dto, string? userId = null);
     Task<PagedResultDto<ServiceRequestDto>> GetAllAsync(ServiceRequestQueryDto query);
+    Task<PagedResultDto<ServiceRequestDto>> GetByUserAsync(string userId, ServiceRequestQueryDto query);
     Task<ServiceRequestDto?> GetByIdAsync(Guid id);
     Task<ServiceRequestDto?> UpdateStatusAsync(Guid id, UpdateStatusDto dto);
     Task<DashboardStatsDto> GetStatisticsAsync();

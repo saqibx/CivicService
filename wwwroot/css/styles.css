@@ -55,7 +55,8 @@ body {
 
 .nav {
     display: flex;
-    gap: 2rem;
+    align-items: center;
+    gap: 1.5rem;
 }
 
 .nav-link {
@@ -67,6 +68,27 @@ body {
 
 .nav-link:hover {
     color: var(--copper);
+}
+
+/* Auth Nav */
+#authNav {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-left: 1rem;
+    padding-left: 1rem;
+    border-left: 1px solid rgba(237, 240, 218, 0.3);
+}
+
+.nav-user {
+    color: var(--beige);
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+#authNav .btn {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
 }
 
 /* Hero Section */

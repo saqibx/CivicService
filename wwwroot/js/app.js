@@ -24,7 +24,7 @@ const modalRequestId = document.getElementById('modalRequestId');
 const newStatusSelect = document.getElementById('newStatus');
 const saveStatusBtn = document.getElementById('saveStatus');
 const cancelStatusBtn = document.getElementById('cancelStatus');
-const modalCloseBtn = document.querySelector('.modal-close');
+const modalCloseBtn = document.querySelector('#statusModal .modal-close');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -34,20 +34,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Event Listeners
 function setupEventListeners() {
-    requestForm.addEventListener('submit', handleFormSubmit);
-    applyFiltersBtn.addEventListener('click', applyFilters);
-    prevPageBtn.addEventListener('click', () => changePage(-1));
-    nextPageBtn.addEventListener('click', () => changePage(1));
-    saveStatusBtn.addEventListener('click', handleStatusUpdate);
-    cancelStatusBtn.addEventListener('click', closeModal);
-    modalCloseBtn.addEventListener('click', closeModal);
-    statusModal.addEventListener('click', (e) => {
-        if (e.target === statusModal) closeModal();
-    });
-    // Note: Geolocation is handled by places.js
+    if (requestForm) {
+        requestForm.addEventListener('submit', handleFormSubmit);
+    }
+    if (applyFiltersBtn) {
+        applyFiltersBtn.addEventListener('click', applyFilters);
+    }
+    if (prevPageBtn) {
+        prevPageBtn.addEventListener('click', () => changePage(-1));
+    }
+    if (nextPageBtn) {
+        nextPageBtn.addEventListener('click', () => changePage(1));
+    }
+    if (saveStatusBtn) {
+        saveStatusBtn.addEventListener('click', handleStatusUpdate);
+    }
+    if (cancelStatusBtn) {
+        cancelStatusBtn.addEventListener('click', closeModal);
+    }
+    if (modalCloseBtn) {
+        modalCloseBtn.addEventListener('click', closeModal);
+    }
+    if (statusModal) {
+        statusModal.addEventListener('click', (e) => {
+            if (e.target === statusModal) closeModal();
+        });
+    }
 }
 
-// Form Submission
+// Form Submission - uses authFetch to associate request with logged-in user
 async function handleFormSubmit(e) {
     e.preventDefault();
 
@@ -63,11 +78,9 @@ async function handleFormSubmit(e) {
     };
 
     try {
-        const response = await fetch(API_BASE, {
+        // Use authFetch to include JWT token if logged in
+        const response = await authFetch(API_BASE, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
             body: JSON.stringify(formData)
         });
 
@@ -75,6 +88,11 @@ async function handleFormSubmit(e) {
             const result = await response.json();
             showMessage('success', `Service request submitted successfully! ID: ${result.id.substring(0, 8)}...`);
             requestForm.reset();
+            // Clear location status
+            const locationStatus = document.getElementById('locationStatus');
+            if (locationStatus) {
+                locationStatus.style.display = 'none';
+            }
             loadRequests();
         } else {
             const error = await response.json();
@@ -103,6 +121,8 @@ function showMessage(type, text) {
 
 // Load Requests
 async function loadRequests() {
+    if (!requestsList) return;
+
     requestsList.innerHTML = '<p class="loading">Loading requests...</p>';
 
     const params = new URLSearchParams({
@@ -127,7 +147,7 @@ async function loadRequests() {
     }
 }
 
-// Render Requests
+// Render Requests - only show Update Status button for Staff/Admin
 function renderRequests(requests) {
     if (!requests || requests.length === 0) {
         requestsList.innerHTML = `
@@ -138,6 +158,8 @@ function renderRequests(requests) {
         `;
         return;
     }
+
+    const canUpdateStatus = typeof isAdmin === 'function' && isAdmin();
 
     requestsList.innerHTML = requests.map(request => `
         <div class="request-card">
@@ -152,11 +174,13 @@ function renderRequests(requests) {
                     <span class="request-id">${request.id.substring(0, 8)}...</span>
                     <span> &bull; ${formatDate(request.createdAt)}</span>
                 </div>
+                ${canUpdateStatus ? `
                 <div class="request-actions">
                     <button class="btn btn-small" onclick="openStatusModal('${request.id}', '${request.status}')">
                         Update Status
                     </button>
                 </div>
+                ` : ''}
             </div>
         </div>
     `).join('');
@@ -205,6 +229,8 @@ function escapeHtml(text) {
 
 // Pagination
 function updatePagination(data) {
+    if (!pagination) return;
+
     if (data.totalPages <= 1) {
         pagination.classList.add('hidden');
         return;
@@ -235,6 +261,8 @@ function applyFilters() {
 
 // Status Update Modal
 function openStatusModal(requestId, currentStatus) {
+    if (!statusModal) return;
+
     modalRequestId.textContent = requestId.substring(0, 8) + '...';
     modalRequestId.dataset.fullId = requestId;
     newStatusSelect.value = currentStatus;
@@ -242,25 +270,32 @@ function openStatusModal(requestId, currentStatus) {
 }
 
 function closeModal() {
-    statusModal.classList.add('hidden');
+    if (statusModal) {
+        statusModal.classList.add('hidden');
+    }
 }
 
+// Status update requires Staff/Admin authentication
 async function handleStatusUpdate() {
     const requestId = modalRequestId.dataset.fullId;
     const newStatus = newStatusSelect.value;
 
     try {
-        const response = await fetch(`${API_BASE}/${requestId}/status`, {
+        // Use authFetch to include JWT token (required for Staff/Admin)
+        const response = await authFetch(`${API_BASE}/${requestId}/status`, {
             method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
             body: JSON.stringify({ status: newStatus })
         });
 
         if (response.ok) {
             closeModal();
             loadRequests();
+        } else if (response.status === 401) {
+            alert('Please log in as Staff or Admin to update request status.');
+            closeModal();
+        } else if (response.status === 403) {
+            alert('You do not have permission to update request status.');
+            closeModal();
         } else {
             alert('Failed to update status. Please try again.');
         }

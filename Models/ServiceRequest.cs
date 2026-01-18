@@ -12,6 +12,9 @@ public class ServiceRequest
 
     public string Address { get; set; } = string.Empty;
 
+    // neighborhood/locality extracted from address for grouping
+    public string? Neighborhood { get; set; }
+
     // geographic coordinates for map display
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }
@@ -20,4 +23,8 @@ public class ServiceRequest
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+
+    // User who submitted the request (null for guest submissions)
+    public string? SubmittedById { get; set; }
+    public ApplicationUser? SubmittedBy { get; set; }
 }

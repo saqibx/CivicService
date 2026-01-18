@@ -129,6 +129,27 @@
             margin-left: 1rem;
         }
 
+        .access-denied {
+            text-align: center;
+            padding: 4rem 2rem;
+        }
+
+        .access-denied h2 {
+            color: var(--punch-red);
+            margin-bottom: 1rem;
+        }
+
+        .nav-user {
+            color: var(--beige);
+            margin-right: 0.5rem;
+        }
+
+        #authNav {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
         @media (max-width: 768px) {
             .charts-grid {
                 grid-template-columns: 1fr;
@@ -148,12 +169,13 @@
                 <a href="/" class="nav-link">Home</a>
                 <a href="/map.html" class="nav-link">Map View</a>
                 <a href="/admin.html" class="nav-link">Dashboard</a>
+                <div id="authNav"></div>
             </nav>
         </div>
     </header>
 
     <main class="main">
-        <div class="container dashboard">
+        <div id="dashboardContent" class="container dashboard" style="display: none;">
             <div class="dashboard-header">
                 <h2 class="section-title">
                     Admin Dashboard
@@ -189,11 +211,17 @@
             </div>
 
             <div class="top-addresses">
-                <h3>Top Problem Areas</h3>
-                <ul id="addressList" class="address-list">
+                <h3>Top Problem Neighborhoods</h3>
+                <ul id="neighborhoodList" class="address-list">
                     <li class="loading-overlay">Loading...</li>
                 </ul>
             </div>
+        </div>
+
+        <div id="accessDenied" class="container access-denied" style="display: none;">
+            <h2>Access Denied</h2>
+            <p>You must be logged in as Admin to view the dashboard.</p>
+            <button onclick="showLoginModal()" class="btn btn-primary" style="margin-top: 1rem;">Login</button>
         </div>
     </main>
 
@@ -203,6 +231,69 @@
         </div>
     </footer>
 
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Login</h3>
+                <button class="modal-close" onclick="hideLoginModal()">&times;</button>
+            </div>
+            <form id="loginForm">
+                <div class="modal-body">
+                    <div id="loginError" class="auth-error hidden" style="background-color: #F8D7DA; color: #721C24; padding: 0.5rem; border-radius: 4px; margin-bottom: 1rem;"></div>
+                    <div class="form-group">
+                        <label for="loginEmail">Email</label>
+                        <input type="email" id="loginEmail" name="loginEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="loginPassword">Password</label>
+                        <input type="password" id="loginPassword" name="loginPassword" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" onclick="hideLoginModal()" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Login</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Register Modal -->
+    <div id="registerModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create Account</h3>
+                <button class="modal-close" onclick="hideRegisterModal()">&times;</button>
+            </div>
+            <form id="registerForm">
+                <div class="modal-body">
+                    <div id="registerError" class="auth-error hidden" style="background-color: #F8D7DA; color: #721C24; padding: 0.5rem; border-radius: 4px; margin-bottom: 1rem;"></div>
+                    <div class="form-group">
+                        <label for="registerFirstName">First Name</label>
+                        <input type="text" id="registerFirstName" name="registerFirstName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="registerLastName">Last Name</label>
+                        <input type="text" id="registerLastName" name="registerLastName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="registerEmail">Email</label>
+                        <input type="email" id="registerEmail" name="registerEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="registerPassword">Password</label>
+                        <input type="password" id="registerPassword" name="registerPassword" required minlength="6">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" onclick="hideRegisterModal()" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/js/auth.js"></script>
     <script>
         const API_BASE = '/api/requests';
         let statusChart, categoryChart, timelineChart;
@@ -225,13 +316,32 @@
         };
 
         document.addEventListener('DOMContentLoaded', () => {
-            loadDashboard();
+            checkAccessAndLoad();
             document.getElementById('refreshBtn').addEventListener('click', loadDashboard);
         });
 
+        function checkAccessAndLoad() {
+            if (isAdmin()) {
+                document.getElementById('dashboardContent').style.display = 'block';
+                document.getElementById('accessDenied').style.display = 'none';
+                loadDashboard();
+            } else {
+                document.getElementById('dashboardContent').style.display = 'none';
+                document.getElementById('accessDenied').style.display = 'block';
+            }
+        }
+
         async function loadDashboard() {
             try {
-                const response = await fetch(`${API_BASE}/stats`);
+                // Use authFetch to include JWT token
+                const response = await authFetch(`${API_BASE}/stats`);
+
+                if (response.status === 401 || response.status === 403) {
+                    document.getElementById('dashboardContent').style.display = 'none';
+                    document.getElementById('accessDenied').style.display = 'block';
+                    return;
+                }
+
                 const stats = await response.json();
                 renderDashboard(stats);
             } catch (err) {
@@ -244,7 +354,7 @@
             renderStatusChart(stats.byStatus);
             renderCategoryChart(stats.byCategory);
             renderTimelineChart(stats.requestsOverTime);
-            renderTopAddresses(stats.topAddresses);
+            renderTopNeighborhoods(stats.topNeighborhoods);
         }
 
         function renderStatCards(stats) {
@@ -399,17 +509,17 @@
             });
         }
 
-        function renderTopAddresses(topAddresses) {
-            const list = document.getElementById('addressList');
+        function renderTopNeighborhoods(topNeighborhoods) {
+            const list = document.getElementById('neighborhoodList');
 
-            if (!topAddresses || topAddresses.length === 0) {
+            if (!topNeighborhoods || topNeighborhoods.length === 0) {
                 list.innerHTML = '<li class="address-item"><span class="address-name">No data available</span></li>';
                 return;
             }
 
-            list.innerHTML = topAddresses.map((item, index) => `
+            list.innerHTML = topNeighborhoods.map((item, index) => `
                 <li class="address-item">
-                    <span class="address-name">${index + 1}. ${escapeHtml(item.address)}</span>
+                    <span class="address-name">${index + 1}. ${escapeHtml(item.neighborhood)}</span>
                     <span class="address-count">${item.count} request${item.count !== 1 ? 's' : ''}</span>
                 </li>
             `).join('');
