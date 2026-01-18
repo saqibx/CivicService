@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: civicservice_postgres
+    environment:
+      POSTGRES_DB: civicservice
+      POSTGRES_USER: civicservice
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - civicservice_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U civicservice -d civicservice"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  civicservice:
+    build: .
+    container_name: civicservice_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Database
+      DatabaseProvider: Postgres
+      ConnectionStrings__Postgres: Host=postgres;Database=civicservice;Username=civicservice;Password=${POSTGRES_PASSWORD}
+
+      # JWT Authentication
+      Jwt__Key: ${JWT_KEY}
+      Jwt__Issuer: ${JWT_ISSUER:-CivicService}
+      Jwt__Audience: ${JWT_AUDIENCE:-CivicServiceUsers}
+
+      # Default Admin Account
+      DefaultAdmin__Email: ${DEFAULT_ADMIN_EMAIL}
+      DefaultAdmin__Password: ${DEFAULT_ADMIN_PASSWORD}
+
+      # SMTP (Optional)
+      Smtp__Host: ${SMTP_HOST:-}
+      Smtp__Port: ${SMTP_PORT:-587}
+      Smtp__UseSsl: ${SMTP_USE_SSL:-false}
+      Smtp__Username: ${SMTP_USERNAME:-}
+      Smtp__Password: ${SMTP_PASSWORD:-}
+      Smtp__FromEmail: ${SMTP_FROM_EMAIL:-noreply@civicservice.local}
+      Smtp__FromName: ${SMTP_FROM_NAME:-Civic Service Portal}
+
+      # reCAPTCHA (Optional)
+      ReCaptcha__SiteKey: ${RECAPTCHA_SITE_KEY:-}
+      ReCaptcha__SecretKey: ${RECAPTCHA_SECRET_KEY:-}
+      ReCaptcha__MinScore: ${RECAPTCHA_MIN_SCORE:-0.5}
+
+      # ASP.NET Core
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+    ports:
+      - "${APP_PORT:-5123}:8080"
+    restart: unless-stopped
+
+volumes:
+  civicservice_pgdata:

@@ -42,12 +42,14 @@ public class ServiceRequestService : IServiceRequestService
             "Created service request {Id} - Category: {Category}, Address: {Address}, UserId: {UserId}",
             serviceRequest.Id, serviceRequest.Category, serviceRequest.Address, userId ?? "guest");
 
-        return MapToDto(serviceRequest);
+        return MapToDto(serviceRequest, userId, null);
     }
 
-    public async Task<PagedResultDto<ServiceRequestDto>> GetAllAsync(ServiceRequestQueryDto query)
+    public async Task<PagedResultDto<ServiceRequestDto>> GetAllAsync(ServiceRequestQueryDto query, string? userId = null, string? ipAddress = null)
     {
-        var queryable = _context.ServiceRequests.AsQueryable();
+        var queryable = _context.ServiceRequests
+            .Include(r => r.Upvotes)
+            .AsQueryable();
 
         // filtering
         if (query.Status.HasValue)
@@ -70,6 +72,7 @@ public class ServiceRequestService : IServiceRequestService
             "createdat_desc" => queryable.OrderByDescending(r => r.CreatedAt),
             "updatedat_asc" => queryable.OrderBy(r => r.UpdatedAt),
             "updatedat_desc" => queryable.OrderByDescending(r => r.UpdatedAt),
+            "upvotes_desc" => queryable.OrderByDescending(r => r.Upvotes.Count).ThenByDescending(r => r.CreatedAt),
             _ => queryable.OrderByDescending(r => r.CreatedAt) // default
         };
 
@@ -84,7 +87,7 @@ public class ServiceRequestService : IServiceRequestService
 
         return new PagedResultDto<ServiceRequestDto>
         {
-            Items = items.Select(MapToDto),
+            Items = items.Select(r => MapToDto(r, userId, ipAddress)),
             TotalCount = totalCount,
             Page = page,
             PageSize = pageSize
@@ -94,6 +97,7 @@ public class ServiceRequestService : IServiceRequestService
     public async Task<PagedResultDto<ServiceRequestDto>> GetByUserAsync(string userId, ServiceRequestQueryDto query)
     {
         var queryable = _context.ServiceRequests
+            .Include(r => r.Upvotes)
             .Where(r => r.SubmittedById == userId);
 
         // filtering
@@ -117,6 +121,7 @@ public class ServiceRequestService : IServiceRequestService
             "createdat_desc" => queryable.OrderByDescending(r => r.CreatedAt),
             "updatedat_asc" => queryable.OrderBy(r => r.UpdatedAt),
             "updatedat_desc" => queryable.OrderByDescending(r => r.UpdatedAt),
+            "upvotes_desc" => queryable.OrderByDescending(r => r.Upvotes.Count).ThenByDescending(r => r.CreatedAt),
             _ => queryable.OrderByDescending(r => r.CreatedAt)
         };
 
@@ -131,17 +136,19 @@ public class ServiceRequestService : IServiceRequestService
 
         return new PagedResultDto<ServiceRequestDto>
         {
-            Items = items.Select(MapToDto),
+            Items = items.Select(r => MapToDto(r, userId, null)),
             TotalCount = totalCount,
             Page = page,
             PageSize = pageSize
         };
     }
 
-    public async Task<ServiceRequestDto?> GetByIdAsync(Guid id)
+    public async Task<ServiceRequestDto?> GetByIdAsync(Guid id, string? userId = null, string? ipAddress = null)
     {
-        var serviceRequest = await _context.ServiceRequests.FindAsync(id);
-        return serviceRequest == null ? null : MapToDto(serviceRequest);
+        var serviceRequest = await _context.ServiceRequests
+            .Include(r => r.Upvotes)
+            .FirstOrDefaultAsync(r => r.Id == id);
+        return serviceRequest == null ? null : MapToDto(serviceRequest, userId, ipAddress);
     }
 
     public async Task<ServiceRequestDto?> UpdateStatusAsync(Guid id, UpdateStatusDto dto)
@@ -180,7 +187,58 @@ public class ServiceRequestService : IServiceRequestService
             );
         }
 
-        return MapToDto(serviceRequest);
+        return MapToDto(serviceRequest, null, null);
+    }
+
+    public async Task<bool> UpvoteAsync(Guid requestId, string? userId, string ipAddress)
+    {
+        // Check if request exists
+        var request = await _context.ServiceRequests.FindAsync(requestId);
+        if (request == null)
+            return false;
+
+        // Check for existing upvote
+        var existingUpvote = await _context.Upvotes
+            .FirstOrDefaultAsync(u => u.ServiceRequestId == requestId &&
+                ((userId != null && u.UserId == userId) || (userId == null && u.IpAddress == ipAddress)));
+
+        if (existingUpvote != null)
+            return false; // Already upvoted
+
+        var upvote = new Upvote
+        {
+            Id = Guid.NewGuid(),
+            ServiceRequestId = requestId,
+            UserId = userId,
+            IpAddress = userId == null ? ipAddress : null, // Only store IP for anonymous users
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.Upvotes.Add(upvote);
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Upvote added to request {RequestId} by {UserOrIp}",
+            requestId, userId ?? $"IP:{ipAddress}");
+
+        return true;
+    }
+
+    public async Task<bool> RemoveUpvoteAsync(Guid requestId, string? userId, string ipAddress)
+    {
+        var upvote = await _context.Upvotes
+            .FirstOrDefaultAsync(u => u.ServiceRequestId == requestId &&
+                ((userId != null && u.UserId == userId) || (userId == null && u.IpAddress == ipAddress)));
+
+        if (upvote == null)
+            return false;
+
+        _context.Upvotes.Remove(upvote);
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Upvote removed from request {RequestId} by {UserOrIp}",
+            requestId, userId ?? $"IP:{ipAddress}");
+
+        return true;
     }
 
     public async Task<DashboardStatsDto> GetStatisticsAsync()
@@ -235,8 +293,16 @@ public class ServiceRequestService : IServiceRequestService
         };
     }
 
-    private static ServiceRequestDto MapToDto(ServiceRequest request)
+    private static ServiceRequestDto MapToDto(ServiceRequest request, string? currentUserId, string? currentIpAddress)
     {
+        var hasUpvoted = false;
+        if (request.Upvotes != null)
+        {
+            hasUpvoted = request.Upvotes.Any(u =>
+                (currentUserId != null && u.UserId == currentUserId) ||
+                (currentUserId == null && currentIpAddress != null && u.IpAddress == currentIpAddress));
+        }
+
         return new ServiceRequestDto
         {
             Id = request.Id,
@@ -249,7 +315,9 @@ public class ServiceRequestService : IServiceRequestService
             Status = request.Status,
             CreatedAt = request.CreatedAt,
             UpdatedAt = request.UpdatedAt,
-            SubmittedById = request.SubmittedById
+            SubmittedById = request.SubmittedById,
+            UpvoteCount = request.Upvotes?.Count ?? 0,
+            HasUpvoted = hasUpvoted
         };
     }
 

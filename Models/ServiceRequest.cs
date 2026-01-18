@@ -27,4 +27,7 @@ public class ServiceRequest
     // User who submitted the request (null for guest submissions)
     public string? SubmittedById { get; set; }
     public ApplicationUser? SubmittedBy { get; set; }
+
+    // Upvotes from users affected by the same issue
+    public ICollection<Upvote> Upvotes { get; set; } = [];
 }

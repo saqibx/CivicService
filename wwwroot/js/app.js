@@ -78,6 +78,20 @@ async function handleFormSubmit(e) {
     };
 
     try {
+        // For anonymous submissions, get reCAPTCHA token if configured
+        const isAnonymous = !isLoggedIn();
+        const siteKey = window.APP_CONFIG?.RECAPTCHA_SITE_KEY;
+
+        if (isAnonymous && siteKey && window.grecaptcha) {
+            try {
+                formData.captchaToken = await grecaptcha.execute(siteKey, { action: 'submit_request' });
+            } catch (captchaErr) {
+                console.error('reCAPTCHA error:', captchaErr);
+                showMessage('error', 'Security verification failed. Please refresh and try again.');
+                return;
+            }
+        }
+
         // Use authFetch to include JWT token if logged in
         const response = await authFetch(API_BASE, {
             method: 'POST',
@@ -97,7 +111,9 @@ async function handleFormSubmit(e) {
         } else {
             const error = await response.json();
             let errorMsg = 'Failed to submit request.';
-            if (error.errors) {
+            if (error.error) {
+                errorMsg = error.error;
+            } else if (error.errors) {
                 errorMsg = Object.values(error.errors).flat().join(' ');
             }
             showMessage('error', errorMsg);
@@ -135,7 +151,8 @@ async function loadRequests() {
     if (currentFilters.category) params.append('category', currentFilters.category);
 
     try {
-        const response = await fetch(`${API_BASE}?${params}`);
+        // Use authFetch so server knows the user for HasUpvoted flag
+        const response = await authFetch(`${API_BASE}?${params}`);
         const data = await response.json();
 
         totalPages = data.totalPages;
@@ -147,7 +164,7 @@ async function loadRequests() {
     }
 }
 
-// Render Requests - only show Update Status button for Staff/Admin
+// Render Requests - only show Update Status button for Admin
 function renderRequests(requests) {
     if (!requests || requests.length === 0) {
         requestsList.innerHTML = `
@@ -174,13 +191,20 @@ function renderRequests(requests) {
                     <span class="request-id">${request.id.substring(0, 8)}...</span>
                     <span> &bull; ${formatDate(request.createdAt)}</span>
                 </div>
-                ${canUpdateStatus ? `
                 <div class="request-actions">
+                    <button class="upvote-btn ${request.hasUpvoted ? 'upvoted' : ''}"
+                            onclick="handleUpvote('${request.id}', ${request.hasUpvoted})"
+                            title="${request.hasUpvoted ? 'Remove your vote' : 'I\'m affected too'}">
+                        <span>${request.hasUpvoted ? '✓' : '+'}</span>
+                        <span>Affected</span>
+                        <span class="upvote-count">${request.upvoteCount}</span>
+                    </button>
+                    ${canUpdateStatus ? `
                     <button class="btn btn-small" onclick="openStatusModal('${request.id}', '${request.status}')">
                         Update Status
                     </button>
+                    ` : ''}
                 </div>
-                ` : ''}
             </div>
         </div>
     `).join('');
@@ -275,13 +299,13 @@ function closeModal() {
     }
 }
 
-// Status update requires Staff/Admin authentication
+// Status update requires Admin authentication
 async function handleStatusUpdate() {
     const requestId = modalRequestId.dataset.fullId;
     const newStatus = newStatusSelect.value;
 
     try {
-        // Use authFetch to include JWT token (required for Staff/Admin)
+        // Use authFetch to include JWT token (required for Admin)
         const response = await authFetch(`${API_BASE}/${requestId}/status`, {
             method: 'PUT',
             body: JSON.stringify({ status: newStatus })
@@ -291,7 +315,7 @@ async function handleStatusUpdate() {
             closeModal();
             loadRequests();
         } else if (response.status === 401) {
-            alert('Please log in as Staff or Admin to update request status.');
+            alert('Please log in as Admin to update request status.');
             closeModal();
         } else if (response.status === 403) {
             alert('You do not have permission to update request status.');
@@ -302,5 +326,26 @@ async function handleStatusUpdate() {
     } catch (err) {
         alert('Network error. Please try again.');
         console.error(err);
+    }
+}
+
+// Handle upvote/remove upvote ("I'm affected too")
+async function handleUpvote(requestId, hasUpvoted) {
+    try {
+        const method = hasUpvoted ? 'DELETE' : 'POST';
+        const response = await authFetch(`${API_BASE}/${requestId}/upvote`, {
+            method: method
+        });
+
+        if (response.ok) {
+            loadRequests(); // Refresh to show updated count
+        } else if (response.status === 409) {
+            // Already upvoted, refresh to sync state
+            loadRequests();
+        } else {
+            console.error('Failed to update upvote');
+        }
+    } catch (err) {
+        console.error('Error updating upvote:', err);
     }
 }

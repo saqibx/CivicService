@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea/
+.vs/
+.vscode/
+*.swp
+
+# Build outputs
+bin/
+obj/
+
+# Test project
+CivicService.Tests/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Documentation
+*.md
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Claude
+.claude/

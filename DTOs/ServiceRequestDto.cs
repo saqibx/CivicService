@@ -23,4 +23,10 @@ public class ServiceRequestDto
 
     // User who submitted (null for guest submissions)
     public string? SubmittedById { get; set; }
+
+    // Upvote count (people affected by this issue)
+    public int UpvoteCount { get; set; }
+
+    // Whether the current user/visitor has upvoted this request
+    public bool HasUpvoted { get; set; }
 }

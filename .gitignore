@@ -22,7 +22,6 @@ obj/
 
 # Environment/secrets
 appsettings.*.local.json
-appsettings.json
 .env
 
 # macOS
@@ -30,5 +29,3 @@ appsettings.json
 
 # Windows
 Thumbs.db
-
-appsettings.json

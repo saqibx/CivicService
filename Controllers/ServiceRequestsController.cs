@@ -3,6 +3,7 @@ using CivicService.DTOs;
 using CivicService.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace CivicService.Controllers;
 
@@ -11,11 +12,16 @@ namespace CivicService.Controllers;
 public class ServiceRequestsController : ControllerBase
 {
     private readonly IServiceRequestService _service;
+    private readonly ICaptchaService _captchaService;
     private readonly ILogger<ServiceRequestsController> _logger;
 
-    public ServiceRequestsController(IServiceRequestService service, ILogger<ServiceRequestsController> logger)
+    public ServiceRequestsController(
+        IServiceRequestService service,
+        ICaptchaService captchaService,
+        ILogger<ServiceRequestsController> logger)
     {
         _service = service;
+        _captchaService = captchaService;
         _logger = logger;
     }
 
@@ -23,10 +29,27 @@ public class ServiceRequestsController : ControllerBase
     /// Create a new service request (allows both guests and authenticated users)
     /// </summary>
     [HttpPost]
+    [EnableRateLimiting("submissions")]
     public async Task<IActionResult> Create([FromBody] CreateServiceRequestDto dto)
     {
         // Get user ID if authenticated, otherwise null (guest submission)
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        // For anonymous submissions, verify CAPTCHA if configured
+        if (userId == null && _captchaService.IsConfigured)
+        {
+            if (string.IsNullOrEmpty(dto.CaptchaToken))
+            {
+                return BadRequest(new { error = "CAPTCHA verification required for anonymous submissions." });
+            }
+
+            var isValid = await _captchaService.VerifyAsync(dto.CaptchaToken, "submit_request");
+            if (!isValid)
+            {
+                _logger.LogWarning("CAPTCHA verification failed for IP: {IP}", GetClientIpAddress());
+                return BadRequest(new { error = "CAPTCHA verification failed. Please try again." });
+            }
+        }
 
         var result = await _service.CreateAsync(dto, userId);
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
@@ -38,7 +61,9 @@ public class ServiceRequestsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] ServiceRequestQueryDto query)
     {
-        var results = await _service.GetAllAsync(query);
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var ipAddress = GetClientIpAddress();
+        var results = await _service.GetAllAsync(query, userId, ipAddress);
         return Ok(results);
     }
 
@@ -48,7 +73,9 @@ public class ServiceRequestsController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id)
     {
-        var result = await _service.GetByIdAsync(id);
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var ipAddress = GetClientIpAddress();
+        var result = await _service.GetByIdAsync(id, userId, ipAddress);
         if (result == null)
         {
             return NotFound();
@@ -97,5 +124,57 @@ public class ServiceRequestsController : ControllerBase
 
         var results = await _service.GetByUserAsync(userId, query);
         return Ok(results);
+    }
+
+    /// <summary>
+    /// Upvote a service request ("I'm affected too")
+    /// </summary>
+    [HttpPost("{id:guid}/upvote")]
+    [EnableRateLimiting("upvotes")]
+    public async Task<IActionResult> Upvote(Guid id)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var ipAddress = GetClientIpAddress();
+
+        var success = await _service.UpvoteAsync(id, userId, ipAddress);
+
+        if (!success)
+        {
+            // Could be: request not found, or already upvoted
+            return Conflict(new { error = "Already upvoted or request not found" });
+        }
+
+        return Ok(new { success = true });
+    }
+
+    /// <summary>
+    /// Remove upvote from a service request
+    /// </summary>
+    [HttpDelete("{id:guid}/upvote")]
+    public async Task<IActionResult> RemoveUpvote(Guid id)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var ipAddress = GetClientIpAddress();
+
+        var success = await _service.RemoveUpvoteAsync(id, userId, ipAddress);
+
+        if (!success)
+        {
+            return NotFound(new { error = "Upvote not found" });
+        }
+
+        return Ok(new { success = true });
+    }
+
+    private string GetClientIpAddress()
+    {
+        // Check for forwarded IP (when behind a proxy/load balancer)
+        var forwardedFor = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(forwardedFor))
+        {
+            return forwardedFor.Split(',')[0].Trim();
+        }
+
+        return HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
     }
 }

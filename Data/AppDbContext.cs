@@ -14,6 +14,9 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     // service requests table
     public DbSet<ServiceRequest> ServiceRequests => Set<ServiceRequest>();
 
+    // upvotes table
+    public DbSet<Upvote> Upvotes => Set<Upvote>();
+
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -35,6 +38,26 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
                 .WithMany(u => u.SubmittedRequests)
                 .HasForeignKey(e => e.SubmittedById)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // Upvotes configuration
+        modelBuilder.Entity<Upvote>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasOne(e => e.ServiceRequest)
+                .WithMany(r => r.Upvotes)
+                .HasForeignKey(e => e.ServiceRequestId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Index for quick lookup of existing votes
+            entity.HasIndex(e => new { e.ServiceRequestId, e.UserId });
+            entity.HasIndex(e => new { e.ServiceRequestId, e.IpAddress });
         });
 
         // Customize Identity table names (optional, makes them cleaner)

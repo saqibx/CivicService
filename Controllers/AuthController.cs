@@ -6,12 +6,14 @@ using CivicService.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 
 namespace CivicService.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[EnableRateLimiting("auth")]
 public class AuthController : ControllerBase
 {
     private readonly UserManager<ApplicationUser> _userManager;
@@ -109,7 +111,17 @@ public class AuthController : ControllerBase
             });
         }
 
-        var result = await _signInManager.CheckPasswordSignInAsync(user, dto.Password, lockoutOnFailure: false);
+        var result = await _signInManager.CheckPasswordSignInAsync(user, dto.Password, lockoutOnFailure: true);
+
+        if (result.IsLockedOut)
+        {
+            _logger.LogWarning("User account locked out: {Email}", dto.Email);
+            return Unauthorized(new AuthResponseDto
+            {
+                Success = false,
+                Error = "Account temporarily locked due to too many failed attempts. Please try again later."
+            });
+        }
 
         if (!result.Succeeded)
         {

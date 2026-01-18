@@ -70,6 +70,30 @@
             margin-bottom: 1rem;
             font-size: 0.9rem;
         }
+        .upvote-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.4rem 0.8rem;
+            border: 2px solid #A37C40;
+            background: white;
+            color: #550C18;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s ease;
+        }
+        .upvote-btn:hover {
+            background: #EDF0DA;
+        }
+        .upvote-btn.upvoted {
+            background: #550C18;
+            color: white;
+            border-color: #550C18;
+        }
+        .upvote-btn .upvote-count {
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -167,6 +191,7 @@
                             <option value="createdAt_desc">Newest First</option>
                             <option value="createdAt_asc">Oldest First</option>
                             <option value="updatedAt_desc">Recently Updated</option>
+                            <option value="upvotes_desc">Most Reported</option>
                         </select>
                     </div>
                     <button id="applyFilters" class="btn btn-secondary">Apply Filters</button>
@@ -280,9 +305,23 @@
     </div>
 
     <script src="/js/auth.js"></script>
-    <script src="/js/app.js"></script>
-    <!-- Config file - Edit /js/config.js to set your Google API key -->
+    <!-- Config file - Edit /js/config.js to set your API keys -->
     <script src="/js/config.js"></script>
+    <!-- reCAPTCHA v3 - only loads if site key is configured -->
+    <script>
+        (function() {
+            const siteKey = window.APP_CONFIG?.RECAPTCHA_SITE_KEY;
+            if (!siteKey) {
+                console.log('reCAPTCHA not configured. Skipping load.');
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = `https://www.google.com/recaptcha/api.js?render=${siteKey}`;
+            script.async = true;
+            document.head.appendChild(script);
+        })();
+    </script>
+    <script src="/js/app.js"></script>
     <!-- Google Maps API with Places library - only loads if API key is configured -->
     <script>
         (function() {
