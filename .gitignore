@@ -29,3 +29,8 @@ appsettings.*.local.json
 
 # Windows
 Thumbs.db
+
+# Build outputs
+bin/
+obj/
+bin\\Debug

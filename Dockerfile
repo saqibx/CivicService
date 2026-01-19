@@ -9,6 +9,22 @@ RUN dotnet restore ./CivicService.csproj
 # Copy the rest of the repo
 COPY . ./
 
+
+RUN echo "=== DEBUG: /src listing ===" \
+ && ls -la \
+ && echo "=== DEBUG: .cs count ===" \
+ && find . -name "*.cs" | wc -l \
+ && echo "=== DEBUG: .razor count ===" \
+ && find . -name "*.razor" | wc -l \
+ && echo "=== DEBUG: .cshtml count ===" \
+ && find . -name "*.cshtml" | wc -l \
+ && echo "=== DEBUG: first 30 .cs files ===" \
+ && find . -name "*.cs" | head -n 30
+
+
+
+
+
 # Publish the main app explicitly (NOT the solution)
 RUN dotnet publish ./CivicService.csproj -c Release -o /app/publish --no-restore
 
