@@ -14,51 +14,60 @@ using Microsoft.IdentityModel.Tokens;
 var builder = WebApplication.CreateBuilder(args);
 
 // ===========================================
-// Debug Environment Variables (Railway)
+// Helper: Get config from multiple sources
 // ===========================================
-Console.WriteLine("=== Configuration Debug Info ===");
-Console.WriteLine($"DATABASE_URL exists: {!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATABASE_URL"))}");
-Console.WriteLine($"ConnectionStrings__Postgres exists: {!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ConnectionStrings__Postgres"))}");
-Console.WriteLine($"DatabaseProvider: {Environment.GetEnvironmentVariable("DatabaseProvider")}");
+string? GetConfig(params string[] keys)
+{
+    foreach (var key in keys)
+    {
+        // Try ASP.NET Core configuration first
+        var value = builder.Configuration[key];
+        if (!string.IsNullOrWhiteSpace(value)) return value;
+
+        // Try environment variable directly (for Railway-style vars like JWT_KEY)
+        value = Environment.GetEnvironmentVariable(key);
+        if (!string.IsNullOrWhiteSpace(value)) return value;
+
+        // Try with underscores replaced (JWT_KEY -> Jwt__Key style)
+        var envKey = key.Replace(":", "__");
+        value = Environment.GetEnvironmentVariable(envKey);
+        if (!string.IsNullOrWhiteSpace(value)) return value;
+    }
+    return null;
+}
 
 // ===========================================
 // Validate Required Configuration
 // ===========================================
-var jwtKey = builder.Configuration["Jwt:Key"];
+
+// JWT Key - check multiple naming conventions
+var jwtKey = GetConfig("Jwt:Key", "JWT_KEY", "JwtKey");
 if (string.IsNullOrWhiteSpace(jwtKey))
-    throw new InvalidOperationException("Configuration error: 'Jwt:Key' is required. Set it via environment variable 'Jwt__Key' or in appsettings.json.");
+    throw new InvalidOperationException("Configuration error: JWT Key is required. Set 'Jwt__Key' or 'JWT_KEY' environment variable.");
 if (jwtKey.Length < 32)
-    throw new InvalidOperationException("Configuration error: 'Jwt:Key' must be at least 32 characters for security.");
+    throw new InvalidOperationException("Configuration error: JWT Key must be at least 32 characters for security.");
 
-var adminEmail = builder.Configuration["DefaultAdmin:Email"];
-var adminPassword = builder.Configuration["DefaultAdmin:Password"];
+// Admin credentials
+var adminEmail = GetConfig("DefaultAdmin:Email", "DEFAULT_ADMIN_EMAIL", "AdminEmail");
+var adminPassword = GetConfig("DefaultAdmin:Password", "DEFAULT_ADMIN_PASSWORD", "AdminPassword");
 if (string.IsNullOrWhiteSpace(adminEmail) || string.IsNullOrWhiteSpace(adminPassword))
-    throw new InvalidOperationException("Configuration error: 'DefaultAdmin:Email' and 'DefaultAdmin:Password' are required. Set them via environment variables or in appsettings.json.");
+    throw new InvalidOperationException("Configuration error: Admin credentials required. Set 'DefaultAdmin__Email'/'DefaultAdmin__Password' or 'DEFAULT_ADMIN_EMAIL'/'DEFAULT_ADMIN_PASSWORD' environment variables.");
 
-var dbProvider = builder.Configuration.GetValue<string>("DatabaseProvider") ?? "Sqlite";
-var connectionString = builder.Configuration.GetConnectionString(dbProvider);
-
-// Fallback to DATABASE_URL if connection string is empty (Railway default)
-if (string.IsNullOrWhiteSpace(connectionString) && dbProvider == "Postgres")
-{
-    var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
-    if (!string.IsNullOrWhiteSpace(databaseUrl))
-    {
-        Console.WriteLine("Using DATABASE_URL as fallback");
-        connectionString = databaseUrl;
-    }
-}
+// Database connection
+var dbProvider = GetConfig("DatabaseProvider", "DATABASE_PROVIDER") ?? "Postgres";
+var connectionString = builder.Configuration.GetConnectionString(dbProvider)
+    ?? GetConfig("DATABASE_URL", $"ConnectionStrings:{dbProvider}");
 
 if (string.IsNullOrWhiteSpace(connectionString))
-    throw new InvalidOperationException($"Configuration error: Connection string for '{dbProvider}' is required. Set 'ConnectionStrings__{dbProvider}' or 'DATABASE_URL' environment variable.");
+    throw new InvalidOperationException($"Configuration error: Database connection required. Set 'DATABASE_URL' or 'ConnectionStrings__{dbProvider}' environment variable.");
 
-// Log connection string info for debugging (without exposing password)
-Console.WriteLine($"Database Provider: {dbProvider}");
-Console.WriteLine($"Connection String Length: {connectionString?.Length ?? 0}");
-Console.WriteLine($"Connection String First 30 chars: {(connectionString?.Length > 30 ? connectionString.Substring(0, 30) + "..." : connectionString)}");
+// JWT settings with defaults
+var jwtIssuer = GetConfig("Jwt:Issuer", "JWT_ISSUER") ?? "CivicService";
+var jwtAudience = GetConfig("Jwt:Audience", "JWT_AUDIENCE") ?? "CivicServiceUsers";
 
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "CivicService";
-var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "CivicServiceUsers";
+// Debug output
+Console.WriteLine($"[Config] Database Provider: {dbProvider}");
+Console.WriteLine($"[Config] Connection String: {(connectionString.Length > 20 ? connectionString[..20] + "..." : connectionString)}");
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>

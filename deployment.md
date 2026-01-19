@@ -25,16 +25,17 @@
 
 ### Required Configuration
 
-| Key | Description | Example | Secret |
-|-----|-------------|---------|--------|
-| `Jwt:Key` | JWT signing key (min 32 chars) | `YourSecureKeyHere123!@#$%` | Yes |
-| `Jwt:Issuer` | JWT token issuer | `CivicService` | No |
-| `Jwt:Audience` | JWT token audience | `CivicServiceUsers` | No |
-| `DefaultAdmin:Email` | Initial admin account email | `admin@yourdomain.com` | Yes |
-| `DefaultAdmin:Password` | Initial admin account password | `SecurePassword123!` | Yes |
-| `DatabaseProvider` | Database provider to use | `Sqlite` or `Postgres` | No |
-| `ConnectionStrings:Sqlite` | SQLite connection string | `Data Source=civicservice.db` | No |
-| `ConnectionStrings:Postgres` | PostgreSQL connection string | See below | Yes |
+The app supports multiple naming conventions for flexibility across deployment platforms.
+
+| ASP.NET Style | Railway/Simple Style | Description | Secret |
+|---------------|---------------------|-------------|--------|
+| `Jwt__Key` | `JWT_KEY` | JWT signing key (min 32 chars) | Yes |
+| `DefaultAdmin__Email` | `DEFAULT_ADMIN_EMAIL` | Initial admin email | Yes |
+| `DefaultAdmin__Password` | `DEFAULT_ADMIN_PASSWORD` | Initial admin password | Yes |
+| `ConnectionStrings__Postgres` | `DATABASE_URL` | PostgreSQL connection | Yes |
+| `DatabaseProvider` | `DATABASE_PROVIDER` | `Sqlite` or `Postgres` | No |
+
+**Note:** Railway automatically provides `DATABASE_URL` when you add a PostgreSQL database.
 
 ### Optional Configuration
 
