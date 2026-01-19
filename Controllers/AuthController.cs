@@ -33,9 +33,7 @@ public class AuthController : ControllerBase
         _logger = logger;
     }
 
-    /// <summary>
-    /// Register a new citizen account
-    /// </summary>
+
     [HttpPost("register")]
     public async Task<ActionResult<AuthResponseDto>> Register([FromBody] RegisterDto dto)
     {
@@ -70,12 +68,10 @@ public class AuthController : ControllerBase
             });
         }
 
-        // Assign Citizen role by default
         await _userManager.AddToRoleAsync(user, AppRoles.Citizen);
 
         _logger.LogInformation("New citizen registered: {Email}", dto.Email);
 
-        // Generate token and return
         var token = await GenerateJwtToken(user);
         var roles = await _userManager.GetRolesAsync(user);
 
@@ -95,9 +91,7 @@ public class AuthController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// Login with email and password
-    /// </summary>
+
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponseDto>> Login([FromBody] LoginDto dto)
     {
@@ -153,9 +147,6 @@ public class AuthController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// Get current user info
-    /// </summary>
     [HttpGet("me")]
     [Authorize]
     public async Task<ActionResult<UserDto>> GetCurrentUser()
@@ -184,9 +175,6 @@ public class AuthController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// Create a staff or admin account (Admin only)
-    /// </summary>
     [HttpPost("staff")]
     [Authorize(Roles = "Admin")]
     public async Task<ActionResult<AuthResponseDto>> CreateStaff([FromBody] CreateStaffDto dto)
@@ -252,9 +240,7 @@ public class AuthController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// List all users (Admin only)
-    /// </summary>
+
     [HttpGet("users")]
     [Authorize(Roles = "Admin")]
     public async Task<ActionResult<List<UserDto>>> GetAllUsers()
@@ -281,7 +267,12 @@ public class AuthController : ControllerBase
     private async Task<string> GenerateJwtToken(ApplicationUser user)
     {
         var roles = await _userManager.GetRolesAsync(user);
+        var claims = BuildClaims(user, roles);
+        return CreateToken(claims);
+    }
 
+    private List<Claim> BuildClaims(ApplicationUser user, IList<string> roles)
+    {
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, user.Id),
@@ -291,12 +282,16 @@ public class AuthController : ControllerBase
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
-        // Add role claims
         foreach (var role in roles)
         {
             claims.Add(new Claim(ClaimTypes.Role, role));
         }
 
+        return claims;
+    }
+
+    private string CreateToken(List<Claim> claims)
+    {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
             _configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT Key not configured")));
 

@@ -51,32 +51,12 @@ public class ServiceRequestService : IServiceRequestService
             .Include(r => r.Upvotes)
             .AsQueryable();
 
-        // filtering
-        if (query.Status.HasValue)
-        {
-            queryable = queryable.Where(r => r.Status == query.Status.Value);
-        }
+        queryable = ApplyFilters(queryable, query);
 
-        if (query.Category.HasValue)
-        {
-            queryable = queryable.Where(r => r.Category == query.Category.Value);
-        }
-
-        // get total count before pagination
         var totalCount = await queryable.CountAsync();
 
-        // sorting
-        queryable = query.Sort?.ToLower() switch
-        {
-            "createdat_asc" => queryable.OrderBy(r => r.CreatedAt),
-            "createdat_desc" => queryable.OrderByDescending(r => r.CreatedAt),
-            "updatedat_asc" => queryable.OrderBy(r => r.UpdatedAt),
-            "updatedat_desc" => queryable.OrderByDescending(r => r.UpdatedAt),
-            "upvotes_desc" => queryable.OrderByDescending(r => r.Upvotes.Count).ThenByDescending(r => r.CreatedAt),
-            _ => queryable.OrderByDescending(r => r.CreatedAt) // default
-        };
+        queryable = ApplySorting(queryable, query.Sort);
 
-        // pagination
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
 
@@ -94,13 +74,8 @@ public class ServiceRequestService : IServiceRequestService
         };
     }
 
-    public async Task<PagedResultDto<ServiceRequestDto>> GetByUserAsync(string userId, ServiceRequestQueryDto query)
+    private IQueryable<ServiceRequest> ApplyFilters(IQueryable<ServiceRequest> queryable, ServiceRequestQueryDto query)
     {
-        var queryable = _context.ServiceRequests
-            .Include(r => r.Upvotes)
-            .Where(r => r.SubmittedById == userId);
-
-        // filtering
         if (query.Status.HasValue)
         {
             queryable = queryable.Where(r => r.Status == query.Status.Value);
@@ -111,11 +86,12 @@ public class ServiceRequestService : IServiceRequestService
             queryable = queryable.Where(r => r.Category == query.Category.Value);
         }
 
-        // get total count before pagination
-        var totalCount = await queryable.CountAsync();
+        return queryable;
+    }
 
-        // sorting
-        queryable = query.Sort?.ToLower() switch
+    private IQueryable<ServiceRequest> ApplySorting(IQueryable<ServiceRequest> queryable, string? sort)
+    {
+        return sort?.ToLower() switch
         {
             "createdat_asc" => queryable.OrderBy(r => r.CreatedAt),
             "createdat_desc" => queryable.OrderByDescending(r => r.CreatedAt),
@@ -124,8 +100,20 @@ public class ServiceRequestService : IServiceRequestService
             "upvotes_desc" => queryable.OrderByDescending(r => r.Upvotes.Count).ThenByDescending(r => r.CreatedAt),
             _ => queryable.OrderByDescending(r => r.CreatedAt)
         };
+    }
 
-        // pagination
+    public async Task<PagedResultDto<ServiceRequestDto>> GetByUserAsync(string userId, ServiceRequestQueryDto query)
+    {
+        var queryable = _context.ServiceRequests
+            .Include(r => r.Upvotes)
+            .Where(r => r.SubmittedById == userId);
+
+        queryable = ApplyFilters(queryable, query);
+
+        var totalCount = await queryable.CountAsync();
+
+        queryable = ApplySorting(queryable, query.Sort);
+
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
 
@@ -170,47 +158,49 @@ public class ServiceRequestService : IServiceRequestService
             "Updated service request {Id} status: {OldStatus} -> {NewStatus}",
             id, oldStatus, dto.Status);
 
-        // Send email notification if request was submitted by a logged-in user (not anonymous)
-        if (serviceRequest.SubmittedBy != null && !string.IsNullOrEmpty(serviceRequest.SubmittedBy.Email))
-        {
-            var userName = $"{serviceRequest.SubmittedBy.FirstName} {serviceRequest.SubmittedBy.LastName}".Trim();
-            if (string.IsNullOrWhiteSpace(userName))
-                userName = serviceRequest.SubmittedBy.Email;
-
-            await _emailService.SendStatusUpdateEmailAsync(
-                serviceRequest.SubmittedBy.Email,
-                userName,
-                serviceRequest.Id.ToString(),
-                serviceRequest.Category.ToString(),
-                oldStatus.ToString(),
-                dto.Status.ToString()
-            );
-        }
+        await SendStatusEmailIfNeeded(serviceRequest, oldStatus, dto.Status);
 
         return MapToDto(serviceRequest, null, null);
     }
 
+    private async Task SendStatusEmailIfNeeded(ServiceRequest request, ServiceRequestStatus oldStatus, ServiceRequestStatus newStatus)
+    {
+        if (request.SubmittedBy != null && !string.IsNullOrEmpty(request.SubmittedBy.Email))
+        {
+            var userName = $"{request.SubmittedBy.FirstName} {request.SubmittedBy.LastName}".Trim();
+            if (string.IsNullOrWhiteSpace(userName))
+                userName = request.SubmittedBy.Email;
+
+            await _emailService.SendStatusUpdateEmailAsync(
+                request.SubmittedBy.Email,
+                userName,
+                request.Id.ToString(),
+                request.Category.ToString(),
+                oldStatus.ToString(),
+                newStatus.ToString()
+            );
+        }
+    }
+
     public async Task<bool> UpvoteAsync(Guid requestId, string? userId, string ipAddress)
     {
-        // Check if request exists
         var request = await _context.ServiceRequests.FindAsync(requestId);
         if (request == null)
             return false;
 
-        // Check for existing upvote
         var existingUpvote = await _context.Upvotes
             .FirstOrDefaultAsync(u => u.ServiceRequestId == requestId &&
                 ((userId != null && u.UserId == userId) || (userId == null && u.IpAddress == ipAddress)));
 
         if (existingUpvote != null)
-            return false; // Already upvoted
+            return false;
 
         var upvote = new Upvote
         {
             Id = Guid.NewGuid(),
             ServiceRequestId = requestId,
             UserId = userId,
-            IpAddress = userId == null ? ipAddress : null, // Only store IP for anonymous users
+            IpAddress = userId == null ? ipAddress : null,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -245,42 +235,17 @@ public class ServiceRequestService : IServiceRequestService
     {
         var requests = await _context.ServiceRequests.ToListAsync();
 
-        // counts by status
         var byStatus = requests
             .GroupBy(r => r.Status)
             .ToDictionary(g => g.Key.ToString(), g => g.Count());
 
-        // counts by category
         var byCategory = requests
             .GroupBy(r => r.Category)
             .ToDictionary(g => g.Key.ToString(), g => g.Count());
 
-        // requests over time (last 30 days)
-        var thirtyDaysAgo = DateTime.UtcNow.AddDays(-30);
-        var overTime = requests
-            .Where(r => r.CreatedAt >= thirtyDaysAgo)
-            .GroupBy(r => r.CreatedAt.Date)
-            .OrderBy(g => g.Key)
-            .Select(g => new DailyCountDto { Date = g.Key.ToString("yyyy-MM-dd"), Count = g.Count() })
-            .ToList();
-
-        // average resolution time (for closed requests)
-        var closedRequests = requests.Where(r => r.Status == ServiceRequestStatus.Closed).ToList();
-        double avgResolutionHours = 0;
-        if (closedRequests.Count > 0)
-        {
-            avgResolutionHours = closedRequests
-                .Average(r => (r.UpdatedAt - r.CreatedAt).TotalHours);
-        }
-
-        // top neighborhoods (group by neighborhood, falling back to address extraction for older records)
-        var topNeighborhoods = requests
-            .GroupBy(r => r.Neighborhood ?? ExtractNeighborhood(r.Address))
-            .Where(g => !string.IsNullOrWhiteSpace(g.Key))
-            .OrderByDescending(g => g.Count())
-            .Take(5)
-            .Select(g => new NeighborhoodCountDto { Neighborhood = g.Key, Count = g.Count() })
-            .ToList();
+        var overTime = GetRequestsOverTime(requests);
+        var avgResolutionHours = CalculateAvgResolutionTime(requests);
+        var topNeighborhoods = GetTopNeighborhoods(requests);
 
         return new DashboardStatsDto
         {
@@ -288,10 +253,43 @@ public class ServiceRequestService : IServiceRequestService
             ByStatus = byStatus,
             ByCategory = byCategory,
             RequestsOverTime = overTime,
-            AverageResolutionHours = Math.Round(avgResolutionHours, 1),
+            AverageResolutionHours = avgResolutionHours,
             TopNeighborhoods = topNeighborhoods
         };
     }
+
+    private List<DailyCountDto> GetRequestsOverTime(List<ServiceRequest> requests)
+    {
+        var thirtyDaysAgo = DateTime.UtcNow.AddDays(-30);
+        return requests
+            .Where(r => r.CreatedAt >= thirtyDaysAgo)
+            .GroupBy(r => r.CreatedAt.Date)
+            .OrderBy(g => g.Key)
+            .Select(g => new DailyCountDto { Date = g.Key.ToString("yyyy-MM-dd"), Count = g.Count() })
+            .ToList();
+    }
+
+    private double CalculateAvgResolutionTime(List<ServiceRequest> requests)
+    {
+        var closedRequests = requests.Where(r => r.Status == ServiceRequestStatus.Closed).ToList();
+        if (closedRequests.Count == 0)
+            return 0;
+
+        var avgHours = closedRequests.Average(r => (r.UpdatedAt - r.CreatedAt).TotalHours);
+        return Math.Round(avgHours, 1);
+    }
+
+    private List<NeighborhoodCountDto> GetTopNeighborhoods(List<ServiceRequest> requests)
+    {
+        return requests
+            .GroupBy(r => r.Neighborhood ?? ExtractNeighborhood(r.Address))
+            .Where(g => !string.IsNullOrWhiteSpace(g.Key))
+            .OrderByDescending(g => g.Count())
+            .Take(5)
+            .Select(g => new NeighborhoodCountDto { Neighborhood = g.Key, Count = g.Count() })
+            .ToList();
+    }
+
 
     private static ServiceRequestDto MapToDto(ServiceRequest request, string? currentUserId, string? currentIpAddress)
     {
@@ -321,11 +319,7 @@ public class ServiceRequestService : IServiceRequestService
         };
     }
 
-    /// <summary>
-    /// Extracts neighborhood/locality from a formatted address.
-    /// Google Places addresses typically follow: "Street, Neighborhood/City, State ZIP, Country"
-    /// This method extracts the second component which is usually the neighborhood or city.
-    /// </summary>
+
     private static string ExtractNeighborhood(string address)
     {
         if (string.IsNullOrWhiteSpace(address))
@@ -333,13 +327,11 @@ public class ServiceRequestService : IServiceRequestService
 
         var parts = address.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
-        // If we have at least 2 parts, the second one is typically the neighborhood/locality
         if (parts.Length >= 2)
         {
             return parts[1];
         }
 
-        // If only one part, return it as the neighborhood
         return parts.Length > 0 ? parts[0] : "Unknown";
     }
 }

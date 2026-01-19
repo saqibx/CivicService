@@ -13,22 +13,17 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ===========================================
-// Helper: Get config from multiple sources
-// ===========================================
+
 string? GetConfig(params string[] keys)
 {
     foreach (var key in keys)
     {
-        // Try ASP.NET Core configuration first
         var value = builder.Configuration[key];
         if (!string.IsNullOrWhiteSpace(value)) return value;
 
-        // Try environment variable directly (for Railway-style vars like JWT_KEY)
         value = Environment.GetEnvironmentVariable(key);
         if (!string.IsNullOrWhiteSpace(value)) return value;
 
-        // Try with underscores replaced (JWT_KEY -> Jwt__Key style)
         var envKey = key.Replace(":", "__");
         value = Environment.GetEnvironmentVariable(envKey);
         if (!string.IsNullOrWhiteSpace(value)) return value;
@@ -36,51 +31,42 @@ string? GetConfig(params string[] keys)
     return null;
 }
 
-// ===========================================
-// Helper: Convert DATABASE_URL to Npgsql format
-// ===========================================
-// Railway provides: postgresql://user:pass@host:5432/dbname
-// Npgsql expects:   Host=host;Port=5432;Database=dbname;Username=user;Password=pass
-string ConvertDatabaseUrl(string databaseUrl)
+string ConvertToNpgsqlFormat(string databaseUrl)
 {
     if (!databaseUrl.StartsWith("postgres://") && !databaseUrl.StartsWith("postgresql://"))
-        return databaseUrl; // Already in Npgsql format
+        return databaseUrl;
 
     var uri = new Uri(databaseUrl);
     var userInfo = uri.UserInfo.Split(':');
     var username = userInfo.Length > 0 ? userInfo[0] : "";
     var password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "";
-    var host = uri.Host;
-    var port = uri.Port > 0 ? uri.Port : 5432;
-    var database = uri.AbsolutePath.TrimStart('/');
 
-    var npgsqlConnectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password}";
-
-    // Add SSL for Railway (they require it)
-    if (!databaseUrl.Contains("sslmode=", StringComparison.OrdinalIgnoreCase))
-        npgsqlConnectionString += ";SSL Mode=Require;Trust Server Certificate=true";
-
-    return npgsqlConnectionString;
+    return BuildConnectionString(uri.Host, uri.Port > 0 ? uri.Port : 5432, uri.AbsolutePath.TrimStart('/'), username, password, databaseUrl);
 }
 
-// ===========================================
-// Validate Required Configuration
-// ===========================================
+string BuildConnectionString(string host, int port, string database, string username, string password, string originalUrl)
+{
+    var connStr = $"Host={host};Port={port};Database={database};Username={username};Password={password}";
 
-// JWT Key - check multiple naming conventions
+    if (!originalUrl.Contains("sslmode=", StringComparison.OrdinalIgnoreCase))
+        connStr += ";SSL Mode=Require;Trust Server Certificate=true";
+
+    return connStr;
+}
+
+
 var jwtKey = GetConfig("Jwt:Key", "JWT_KEY", "JwtKey");
 if (string.IsNullOrWhiteSpace(jwtKey))
     throw new InvalidOperationException("Configuration error: JWT Key is required. Set 'Jwt__Key' or 'JWT_KEY' environment variable.");
 if (jwtKey.Length < 32)
     throw new InvalidOperationException("Configuration error: JWT Key must be at least 32 characters for security.");
 
-// Admin credentials
 var adminEmail = GetConfig("DefaultAdmin:Email", "DEFAULT_ADMIN_EMAIL", "AdminEmail");
 var adminPassword = GetConfig("DefaultAdmin:Password", "DEFAULT_ADMIN_PASSWORD", "AdminPassword");
 if (string.IsNullOrWhiteSpace(adminEmail) || string.IsNullOrWhiteSpace(adminPassword))
     throw new InvalidOperationException("Configuration error: Admin credentials required. Set 'DefaultAdmin__Email'/'DefaultAdmin__Password' or 'DEFAULT_ADMIN_EMAIL'/'DEFAULT_ADMIN_PASSWORD' environment variables.");
 
-// Database connection
+
 var dbProvider = GetConfig("DatabaseProvider", "DATABASE_PROVIDER") ?? "Postgres";
 var connectionString = builder.Configuration.GetConnectionString(dbProvider)
     ?? GetConfig("DATABASE_URL", $"ConnectionStrings:{dbProvider}");
@@ -88,20 +74,16 @@ var connectionString = builder.Configuration.GetConnectionString(dbProvider)
 if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException($"Configuration error: Database connection required. Set 'DATABASE_URL' or 'ConnectionStrings__{dbProvider}' environment variable.");
 
-// Convert DATABASE_URL format if needed
 if (dbProvider == "Postgres")
-    connectionString = ConvertDatabaseUrl(connectionString);
+    connectionString = ConvertToNpgsqlFormat(connectionString);
 
-// JWT settings with defaults
 var jwtIssuer = GetConfig("Jwt:Issuer", "JWT_ISSUER") ?? "CivicService";
 var jwtAudience = GetConfig("Jwt:Audience", "JWT_AUDIENCE") ?? "CivicServiceUsers";
 
-// Inject resolved JWT settings into configuration (so controllers can read them)
 builder.Configuration["Jwt:Key"] = jwtKey;
 builder.Configuration["Jwt:Issuer"] = jwtIssuer;
 builder.Configuration["Jwt:Audience"] = jwtAudience;
 
-// Debug output
 Console.WriteLine($"[Config] Database Provider: {dbProvider}");
 Console.WriteLine($"[Config] JWT Key Length: {jwtKey.Length}");
 Console.WriteLine($"[Config] Connection String Format: {(connectionString.StartsWith("Host=") ? "Npgsql" : "URI")}");
@@ -113,12 +95,11 @@ builder.Services.AddControllers()
     });
 builder.Services.AddOpenApi();
 
-// Configure Rate Limiting
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-    // Global rate limit: 100 requests per minute per IP
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -128,7 +109,6 @@ builder.Services.AddRateLimiter(options =>
                 Window = TimeSpan.FromMinutes(1)
             }));
 
-    // Strict limit for submission endpoints: 5 requests per minute per IP
     options.AddPolicy("submissions", context =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -140,7 +120,6 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0
             }));
 
-    // Auth endpoints: 10 attempts per 15 minutes per IP (prevent brute force)
     options.AddPolicy("auth", context =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -152,7 +131,6 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0
             }));
 
-    // Upvote endpoints: 30 per minute per IP
     options.AddPolicy("upvotes", context =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -163,7 +141,6 @@ builder.Services.AddRateLimiter(options =>
             }));
 });
 
-// register services
 builder.Services.AddHttpClient<ICaptchaService, CaptchaService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IServiceRequestService, ServiceRequestService>();
@@ -171,7 +148,6 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 
-// setup database
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
     if (dbProvider == "Postgres")
@@ -184,20 +160,16 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     }
 });
 
-// Configure Identity
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 {
-    // Password settings
     options.Password.RequireDigit = true;
     options.Password.RequireLowercase = true;
     options.Password.RequireUppercase = false;
     options.Password.RequireNonAlphanumeric = false;
     options.Password.RequiredLength = 6;
 
-    // User settings
     options.User.RequireUniqueEmail = true;
 
-    // Lockout settings (brute force protection)
     options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
     options.Lockout.MaxFailedAccessAttempts = 5;
     options.Lockout.AllowedForNewUsers = true;
@@ -205,7 +177,6 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 .AddEntityFrameworkStores<AppDbContext>()
 .AddDefaultTokenProviders();
 
-// Configure JWT Authentication
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -227,25 +198,20 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
-// Configure Health Checks
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>("database", tags: ["db", "sql"]);
 
 var app = builder.Build();
 
-// Apply migrations and seed data on startup
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
-    // Apply pending migrations (creates tables if they don't exist)
-    // Skip for InMemory database (used in tests)
     var isInMemory = db.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
     if (!isInMemory)
     {
-        // Check for RESET_DATABASE flag (one-time use for corrupted deployments)
         var resetDb = Environment.GetEnvironmentVariable("RESET_DATABASE");
         if (resetDb?.ToLower() == "true")
         {
@@ -263,7 +229,6 @@ using (var scope = app.Services.CreateScope())
         await db.Database.EnsureCreatedAsync();
     }
 
-    // Create roles if they don't exist
     foreach (var role in AppRoles.All)
     {
         if (!await roleManager.RoleExistsAsync(role))
@@ -272,7 +237,6 @@ using (var scope = app.Services.CreateScope())
         }
     }
 
-    // Create default admin if no admin exists
     if (await userManager.FindByEmailAsync(adminEmail) == null)
     {
         var admin = new ApplicationUser
@@ -299,14 +263,11 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    // Production security settings
-    // HSTS - tell browsers to only use HTTPS for 1 year
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
 
-// Security headers
 app.Use(async (context, next) =>
 {
     context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
@@ -318,16 +279,13 @@ app.Use(async (context, next) =>
 
 app.UseStaticFiles();
 
-// Rate limiting middleware
 app.UseRateLimiter();
 
-// Authentication & Authorization middleware (order matters!)
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-// Health check endpoint
 app.MapHealthChecks("/health", new HealthCheckOptions
 {
     ResponseWriter = async (context, report) =>
@@ -351,7 +309,6 @@ app.MapHealthChecks("/health", new HealthCheckOptions
     }
 });
 
-// Simple liveness probe (no dependencies)
 app.MapGet("/health/live", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.UtcNow }));
 
 app.MapFallbackToFile("index.html");

@@ -25,7 +25,7 @@ public class CaptchaService : ICaptchaService
         if (!IsConfigured)
         {
             _logger.LogWarning("reCAPTCHA not configured. Skipping verification.");
-            return true; // Allow if not configured (development)
+            return true;
         }
 
         if (string.IsNullOrEmpty(token))
@@ -36,50 +36,8 @@ public class CaptchaService : ICaptchaService
 
         try
         {
-            var response = await _httpClient.PostAsync(
-                "https://www.google.com/recaptcha/api/siteverify",
-                new FormUrlEncodedContent(new Dictionary<string, string>
-                {
-                    ["secret"] = _secretKey!,
-                    ["response"] = token
-                }));
-
-            var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<ReCaptchaResponse>(json);
-
-            if (result == null)
-            {
-                _logger.LogError("Failed to parse reCAPTCHA response");
-                return false;
-            }
-
-            if (!result.Success)
-            {
-                _logger.LogWarning("reCAPTCHA verification failed. Errors: {Errors}",
-                    string.Join(", ", result.ErrorCodes ?? []));
-                return false;
-            }
-
-            // For reCAPTCHA v3, check the score (0.0 - 1.0, higher is more likely human)
-            var minScore = _config.GetValue<double>("ReCaptcha:MinScore", 0.5);
-            if (result.Score < minScore)
-            {
-                _logger.LogWarning("reCAPTCHA score too low: {Score} (min: {MinScore})",
-                    result.Score, minScore);
-                return false;
-            }
-
-            // Verify the action matches what we expect
-            if (!string.IsNullOrEmpty(expectedAction) && result.Action != expectedAction)
-            {
-                _logger.LogWarning("reCAPTCHA action mismatch. Expected: {Expected}, Got: {Actual}",
-                    expectedAction, result.Action);
-                return false;
-            }
-
-            _logger.LogInformation("reCAPTCHA verified successfully. Score: {Score}, Action: {Action}",
-                result.Score, result.Action);
-            return true;
+            var response = await SendVerificationRequest(token);
+            return await ProcessVerificationResponse(response, expectedAction);
         }
         catch (Exception ex)
         {
@@ -87,6 +45,56 @@ public class CaptchaService : ICaptchaService
             return false;
         }
     }
+
+    private async Task<HttpResponseMessage> SendVerificationRequest(string token)
+    {
+        return await _httpClient.PostAsync(
+            "https://www.google.com/recaptcha/api/siteverify",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["secret"] = _secretKey!,
+                ["response"] = token
+            }));
+    }
+
+    private async Task<bool> ProcessVerificationResponse(HttpResponseMessage response, string expectedAction)
+    {
+        var json = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<ReCaptchaResponse>(json);
+
+        if (result == null)
+        {
+            _logger.LogError("Failed to parse reCAPTCHA response");
+            return false;
+        }
+
+        if (!result.Success)
+        {
+            _logger.LogWarning("reCAPTCHA verification failed. Errors: {Errors}",
+                string.Join(", ", result.ErrorCodes ?? []));
+            return false;
+        }
+
+        var minScore = _config.GetValue<double>("ReCaptcha:MinScore", 0.5);
+        if (result.Score < minScore)
+        {
+            _logger.LogWarning("reCAPTCHA score too low: {Score} (min: {MinScore})",
+                result.Score, minScore);
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(expectedAction) && result.Action != expectedAction)
+        {
+            _logger.LogWarning("reCAPTCHA action mismatch. Expected: {Expected}, Got: {Actual}",
+                expectedAction, result.Action);
+            return false;
+        }
+
+        _logger.LogInformation("reCAPTCHA verified successfully. Score: {Score}, Action: {Action}",
+            result.Score, result.Action);
+        return true;
+    }
+
 
     private class ReCaptchaResponse
     {

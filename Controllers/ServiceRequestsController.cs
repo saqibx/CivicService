@@ -25,39 +25,40 @@ public class ServiceRequestsController : ControllerBase
         _logger = logger;
     }
 
-    /// <summary>
-    /// Create a new service request (allows both guests and authenticated users)
-    /// </summary>
     [HttpPost]
     [EnableRateLimiting("submissions")]
     public async Task<IActionResult> Create([FromBody] CreateServiceRequestDto dto)
     {
-        // Get user ID if authenticated, otherwise null (guest submission)
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
-        // For anonymous submissions, verify CAPTCHA if configured
         if (userId == null && _captchaService.IsConfigured)
         {
-            if (string.IsNullOrEmpty(dto.CaptchaToken))
-            {
-                return BadRequest(new { error = "CAPTCHA verification required for anonymous submissions." });
-            }
-
-            var isValid = await _captchaService.VerifyAsync(dto.CaptchaToken, "submit_request");
-            if (!isValid)
-            {
-                _logger.LogWarning("CAPTCHA verification failed for IP: {IP}", GetClientIpAddress());
-                return BadRequest(new { error = "CAPTCHA verification failed. Please try again." });
-            }
+            var captchaResult = await VerifyCaptcha(dto.CaptchaToken);
+            if (captchaResult != null) return captchaResult;
         }
 
         var result = await _service.CreateAsync(dto, userId);
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
-    /// <summary>
-    /// Get all service requests with filtering and pagination (public)
-    /// </summary>
+    private async Task<IActionResult?> VerifyCaptcha(string? token)
+    {
+        if (string.IsNullOrEmpty(token))
+        {
+            return BadRequest(new { error = "CAPTCHA verification required for anonymous submissions." });
+        }
+
+        var isValid = await _captchaService.VerifyAsync(token, "submit_request");
+        if (!isValid)
+        {
+            _logger.LogWarning("CAPTCHA verification failed for IP: {IP}", GetClientIpAddress());
+            return BadRequest(new { error = "CAPTCHA verification failed. Please try again." });
+        }
+
+        return null;
+    }
+
+
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] ServiceRequestQueryDto query)
     {
@@ -67,9 +68,6 @@ public class ServiceRequestsController : ControllerBase
         return Ok(results);
     }
 
-    /// <summary>
-    /// Get a specific service request by ID (public)
-    /// </summary>
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id)
     {
@@ -83,9 +81,6 @@ public class ServiceRequestsController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// Update the status of a service request (Admin only)
-    /// </summary>
     [HttpPut("{id:guid}/status")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] UpdateStatusDto dto)
@@ -98,9 +93,7 @@ public class ServiceRequestsController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// Get dashboard statistics (Admin only)
-    /// </summary>
+
     [HttpGet("stats")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> GetStatistics()
@@ -109,9 +102,6 @@ public class ServiceRequestsController : ControllerBase
         return Ok(stats);
     }
 
-    /// <summary>
-    /// Get requests submitted by the current user (authenticated users only)
-    /// </summary>
     [HttpGet("my")]
     [Authorize]
     public async Task<IActionResult> GetMyRequests([FromQuery] ServiceRequestQueryDto query)
@@ -126,9 +116,7 @@ public class ServiceRequestsController : ControllerBase
         return Ok(results);
     }
 
-    /// <summary>
-    /// Upvote a service request ("I'm affected too")
-    /// </summary>
+
     [HttpPost("{id:guid}/upvote")]
     [EnableRateLimiting("upvotes")]
     public async Task<IActionResult> Upvote(Guid id)
@@ -140,16 +128,12 @@ public class ServiceRequestsController : ControllerBase
 
         if (!success)
         {
-            // Could be: request not found, or already upvoted
             return Conflict(new { error = "Already upvoted or request not found" });
         }
 
         return Ok(new { success = true });
     }
 
-    /// <summary>
-    /// Remove upvote from a service request
-    /// </summary>
     [HttpDelete("{id:guid}/upvote")]
     public async Task<IActionResult> RemoveUpvote(Guid id)
     {
@@ -168,7 +152,6 @@ public class ServiceRequestsController : ControllerBase
 
     private string GetClientIpAddress()
     {
-        // Check for forwarded IP (when behind a proxy/load balancer)
         var forwardedFor = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
         if (!string.IsNullOrEmpty(forwardedFor))
         {
