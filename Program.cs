@@ -13,6 +13,32 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ===========================================
+// Validate Required Configuration
+// ===========================================
+var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(jwtKey))
+    throw new InvalidOperationException("Configuration error: 'Jwt:Key' is required. Set it via environment variable 'Jwt__Key' or in appsettings.json.");
+if (jwtKey.Length < 32)
+    throw new InvalidOperationException("Configuration error: 'Jwt:Key' must be at least 32 characters for security.");
+
+var adminEmail = builder.Configuration["DefaultAdmin:Email"];
+var adminPassword = builder.Configuration["DefaultAdmin:Password"];
+if (string.IsNullOrWhiteSpace(adminEmail) || string.IsNullOrWhiteSpace(adminPassword))
+    throw new InvalidOperationException("Configuration error: 'DefaultAdmin:Email' and 'DefaultAdmin:Password' are required. Set them via environment variables or in appsettings.json.");
+
+var dbProvider = builder.Configuration.GetValue<string>("DatabaseProvider") ?? "Sqlite";
+var connectionString = builder.Configuration.GetConnectionString(dbProvider);
+if (string.IsNullOrWhiteSpace(connectionString))
+    throw new InvalidOperationException($"Configuration error: Connection string for '{dbProvider}' is required. Set 'ConnectionStrings__{dbProvider}' environment variable.");
+
+// Log connection string info for debugging (without exposing password)
+Console.WriteLine($"Database Provider: {dbProvider}");
+Console.WriteLine($"Connection String Length: {connectionString?.Length ?? 0}");
+Console.WriteLine($"Connection String Start: {(connectionString?.Length > 20 ? connectionString.Substring(0, 20) + "..." : connectionString)}");
+
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "CivicService";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "CivicServiceUsers";
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -79,10 +105,6 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 
-// get the database provider from config
-var dbProvider = builder.Configuration.GetValue<string>("DatabaseProvider") ?? "Sqlite";
-var connectionString = builder.Configuration.GetConnectionString(dbProvider);
-
 // setup database
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
@@ -118,10 +140,6 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 .AddDefaultTokenProviders();
 
 // Configure JWT Authentication
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "CivicServiceDefaultSecretKey2024!@#$%^&*()";
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "CivicService";
-var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "CivicServiceUsers";
-
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -165,9 +183,6 @@ using (var scope = app.Services.CreateScope())
     }
 
     // Create default admin if no admin exists
-    var adminEmail = builder.Configuration["DefaultAdmin:Email"] ?? "admin@civicservice.local";
-    var adminPassword = builder.Configuration["DefaultAdmin:Password"] ?? "Admin123!";
-
     if (await userManager.FindByEmailAsync(adminEmail) == null)
     {
         var admin = new ApplicationUser
