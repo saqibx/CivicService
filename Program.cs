@@ -227,11 +227,26 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
-// Seed roles on startup
+// Apply migrations and seed data on startup
 using (var scope = app.Services.CreateScope())
 {
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+
+    // Apply pending migrations (creates tables if they don't exist)
+    // Skip for InMemory database (used in tests)
+    var isInMemory = db.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
+    if (!isInMemory)
+    {
+        Console.WriteLine("[Startup] Applying database migrations...");
+        await db.Database.MigrateAsync();
+        Console.WriteLine("[Startup] Migrations applied successfully.");
+    }
+    else
+    {
+        await db.Database.EnsureCreatedAsync();
+    }
 
     // Create roles if they don't exist
     foreach (var role in AppRoles.All)
