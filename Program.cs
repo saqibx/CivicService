@@ -14,6 +14,14 @@ using Microsoft.IdentityModel.Tokens;
 var builder = WebApplication.CreateBuilder(args);
 
 // ===========================================
+// Debug Environment Variables (Railway)
+// ===========================================
+Console.WriteLine("=== Configuration Debug Info ===");
+Console.WriteLine($"DATABASE_URL exists: {!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATABASE_URL"))}");
+Console.WriteLine($"ConnectionStrings__Postgres exists: {!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ConnectionStrings__Postgres"))}");
+Console.WriteLine($"DatabaseProvider: {Environment.GetEnvironmentVariable("DatabaseProvider")}");
+
+// ===========================================
 // Validate Required Configuration
 // ===========================================
 var jwtKey = builder.Configuration["Jwt:Key"];
@@ -29,13 +37,25 @@ if (string.IsNullOrWhiteSpace(adminEmail) || string.IsNullOrWhiteSpace(adminPass
 
 var dbProvider = builder.Configuration.GetValue<string>("DatabaseProvider") ?? "Sqlite";
 var connectionString = builder.Configuration.GetConnectionString(dbProvider);
+
+// Fallback to DATABASE_URL if connection string is empty (Railway default)
+if (string.IsNullOrWhiteSpace(connectionString) && dbProvider == "Postgres")
+{
+    var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+    if (!string.IsNullOrWhiteSpace(databaseUrl))
+    {
+        Console.WriteLine("Using DATABASE_URL as fallback");
+        connectionString = databaseUrl;
+    }
+}
+
 if (string.IsNullOrWhiteSpace(connectionString))
-    throw new InvalidOperationException($"Configuration error: Connection string for '{dbProvider}' is required. Set 'ConnectionStrings__{dbProvider}' environment variable.");
+    throw new InvalidOperationException($"Configuration error: Connection string for '{dbProvider}' is required. Set 'ConnectionStrings__{dbProvider}' or 'DATABASE_URL' environment variable.");
 
 // Log connection string info for debugging (without exposing password)
 Console.WriteLine($"Database Provider: {dbProvider}");
 Console.WriteLine($"Connection String Length: {connectionString?.Length ?? 0}");
-Console.WriteLine($"Connection String Start: {(connectionString?.Length > 20 ? connectionString.Substring(0, 20) + "..." : connectionString)}");
+Console.WriteLine($"Connection String First 30 chars: {(connectionString?.Length > 30 ? connectionString.Substring(0, 30) + "..." : connectionString)}");
 
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "CivicService";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "CivicServiceUsers";
