@@ -96,8 +96,14 @@ if (dbProvider == "Postgres")
 var jwtIssuer = GetConfig("Jwt:Issuer", "JWT_ISSUER") ?? "CivicService";
 var jwtAudience = GetConfig("Jwt:Audience", "JWT_AUDIENCE") ?? "CivicServiceUsers";
 
+// Inject resolved JWT settings into configuration (so controllers can read them)
+builder.Configuration["Jwt:Key"] = jwtKey;
+builder.Configuration["Jwt:Issuer"] = jwtIssuer;
+builder.Configuration["Jwt:Audience"] = jwtAudience;
+
 // Debug output
 Console.WriteLine($"[Config] Database Provider: {dbProvider}");
+Console.WriteLine($"[Config] JWT Key Length: {jwtKey.Length}");
 Console.WriteLine($"[Config] Connection String Format: {(connectionString.StartsWith("Host=") ? "Npgsql" : "URI")}");
 
 builder.Services.AddControllers()
