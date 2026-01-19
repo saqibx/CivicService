@@ -239,6 +239,15 @@ using (var scope = app.Services.CreateScope())
     var isInMemory = db.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
     if (!isInMemory)
     {
+        // Check for RESET_DATABASE flag (one-time use for corrupted deployments)
+        var resetDb = Environment.GetEnvironmentVariable("RESET_DATABASE");
+        if (resetDb?.ToLower() == "true")
+        {
+            Console.WriteLine("[Startup] RESET_DATABASE=true detected. Dropping and recreating database...");
+            await db.Database.EnsureDeletedAsync();
+            Console.WriteLine("[Startup] Database dropped.");
+        }
+
         Console.WriteLine("[Startup] Applying database migrations...");
         await db.Database.MigrateAsync();
         Console.WriteLine("[Startup] Migrations applied successfully.");
