@@ -37,6 +37,33 @@ string? GetConfig(params string[] keys)
 }
 
 // ===========================================
+// Helper: Convert DATABASE_URL to Npgsql format
+// ===========================================
+// Railway provides: postgresql://user:pass@host:5432/dbname
+// Npgsql expects:   Host=host;Port=5432;Database=dbname;Username=user;Password=pass
+string ConvertDatabaseUrl(string databaseUrl)
+{
+    if (!databaseUrl.StartsWith("postgres://") && !databaseUrl.StartsWith("postgresql://"))
+        return databaseUrl; // Already in Npgsql format
+
+    var uri = new Uri(databaseUrl);
+    var userInfo = uri.UserInfo.Split(':');
+    var username = userInfo.Length > 0 ? userInfo[0] : "";
+    var password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "";
+    var host = uri.Host;
+    var port = uri.Port > 0 ? uri.Port : 5432;
+    var database = uri.AbsolutePath.TrimStart('/');
+
+    var npgsqlConnectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password}";
+
+    // Add SSL for Railway (they require it)
+    if (!databaseUrl.Contains("sslmode=", StringComparison.OrdinalIgnoreCase))
+        npgsqlConnectionString += ";SSL Mode=Require;Trust Server Certificate=true";
+
+    return npgsqlConnectionString;
+}
+
+// ===========================================
 // Validate Required Configuration
 // ===========================================
 
@@ -61,13 +88,17 @@ var connectionString = builder.Configuration.GetConnectionString(dbProvider)
 if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException($"Configuration error: Database connection required. Set 'DATABASE_URL' or 'ConnectionStrings__{dbProvider}' environment variable.");
 
+// Convert DATABASE_URL format if needed
+if (dbProvider == "Postgres")
+    connectionString = ConvertDatabaseUrl(connectionString);
+
 // JWT settings with defaults
 var jwtIssuer = GetConfig("Jwt:Issuer", "JWT_ISSUER") ?? "CivicService";
 var jwtAudience = GetConfig("Jwt:Audience", "JWT_AUDIENCE") ?? "CivicServiceUsers";
 
 // Debug output
 Console.WriteLine($"[Config] Database Provider: {dbProvider}");
-Console.WriteLine($"[Config] Connection String: {(connectionString.Length > 20 ? connectionString[..20] + "..." : connectionString)}");
+Console.WriteLine($"[Config] Connection String Format: {(connectionString.StartsWith("Host=") ? "Npgsql" : "URI")}");
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
