@@ -68,14 +68,8 @@ This repository contains the backend (C# ASP.NET) and frontend (HTML, JavaScript
    dotnet build
    ```
 
-4. If the frontend is a separate project (ClientApp), install dependencies and run the dev server
-   ```bash
-   cd src/ClientApp
-   npm install
-   npm run dev
-   ```
 
-5. Run the backend
+4. Run the backend
    ```bash
    cd ../../src/YourBackendProject
    dotnet run
