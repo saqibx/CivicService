@@ -36,8 +36,6 @@ This repository contains the backend (C# ASP.NET) and frontend (HTML, JavaScript
 
 ## Repository Structure
 
-(Adjust paths to match the actual layout of your repo.)
-
 - /src/ — C# backend project(s)
 - /src/ClientApp/ — frontend assets (HTML/CSS/JS) or SPA
 - /docker/ or Dockerfile — containerization config
@@ -47,7 +45,7 @@ This repository contains the backend (C# ASP.NET) and frontend (HTML, JavaScript
 ## Prerequisites
 
 - .NET SDK 6.0 or later (install from https://dotnet.microsoft.com/)
-- Node.js and npm (if frontend build tooling is used)
+- Node.js and npm 
 - Docker (optional, for container builds)
 - A relational database (Postgres/SQL Server) or use an in-memory provider for development
 
@@ -82,10 +80,10 @@ The application reads configuration from appsettings.json and environment variab
 
 - `ASPNETCORE_ENVIRONMENT` — Development / Production
 - `ConnectionStrings__Default` — Database connection string
-- `JWT__Key` — Secret for JWT token signing (if authentication is used)
+- `JWT__Key` — Secret for JWT token signing 
 - `ASPNETCORE_URLS` — e.g., `http://*:5000`
 
-Create an `appsettings.Development.json` for local overrides and add secrets to a secure store or `.env` file (do not commit secrets).
+Create an `appsettings.Development.json` for local overrides and add secrets to a secure store or `.env` file 
 
 Example `.env` (for local development):
 ```
@@ -114,30 +112,6 @@ Build and run using Docker:
    ```
 
 Adjust port mappings, volumes, and environment variables as needed.
-
-## Testing
-
-Unit and integration tests can be run with the dotnet test command:
-
-```bash
-cd tests
-dotnet test
-```
-
-Aim to add tests for API controllers, services, and core business logic.
-
-## Building & Publishing
-
-To publish the backend for production:
-
-```bash
-cd src/YourBackendProject
-dotnet publish -c Release -o ./publish
-```
-
-Then build a production Docker image referencing the published files.
-
-CI/CD: Consider GitHub Actions to build, test, and push Docker images on merges to main.
 
 
 ## Roadmap / Ideas
